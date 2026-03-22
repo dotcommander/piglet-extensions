@@ -22,10 +22,9 @@ Each extension runs as a standalone binary, communicating with piglet over its e
 
 ## Install
 
-Requires Go 1.26 (see go.mod) and a local clone of [piglet](https://github.com/dotcommander/piglet) as a sibling directory (the `go.mod` `replace` directive points to `../piglet`).
+Requires Go 1.26+.
 
 ```bash
-git clone https://github.com/dotcommander/piglet
 git clone https://github.com/dotcommander/piglet-extensions
 cd piglet-extensions
 make extensions

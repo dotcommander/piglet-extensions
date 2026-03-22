@@ -12,7 +12,6 @@ go test ./<name>/...         # test one extension
 go test -run TestFoo ./memory/  # single test
 ```
 
-Requires `../piglet` as a sibling directory (see `replace` directive in go.mod).
 
 ## Architecture
 
