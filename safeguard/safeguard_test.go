@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dotcommander/piglet/safeguard"
+	"github.com/dotcommander/piglet-extensions/safeguard"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

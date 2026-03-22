@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dotcommander/piglet/plan"
+	"github.com/dotcommander/piglet-extensions/plan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dotcommander/piglet/plan"
+	"github.com/dotcommander/piglet-extensions/plan"
 	sdk "github.com/dotcommander/piglet/sdk/go"
 )
 

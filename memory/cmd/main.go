@@ -11,7 +11,7 @@ import (
 
 	"github.com/dotcommander/piglet/config"
 	"github.com/dotcommander/piglet/core"
-	"github.com/dotcommander/piglet/memory"
+	"github.com/dotcommander/piglet-extensions/memory"
 	"github.com/dotcommander/piglet/provider"
 	sdk "github.com/dotcommander/piglet/sdk/go"
 )

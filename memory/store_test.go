@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/dotcommander/piglet/ext"
-	"github.com/dotcommander/piglet/memory"
+	"github.com/dotcommander/piglet-extensions/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

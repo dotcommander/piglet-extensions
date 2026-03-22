@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dotcommander/piglet/lsp"
+	"github.com/dotcommander/piglet-extensions/lsp"
 	sdk "github.com/dotcommander/piglet/sdk/go"
 )
 

@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/dotcommander/piglet/safeguard"
+	"github.com/dotcommander/piglet-extensions/safeguard"
 	sdk "github.com/dotcommander/piglet/sdk/go"
 )
 

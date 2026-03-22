@@ -5,7 +5,7 @@ package main
 import (
 	"context"
 
-	"github.com/dotcommander/piglet/clipboard"
+	"github.com/dotcommander/piglet-extensions/clipboard"
 	sdk "github.com/dotcommander/piglet/sdk/go"
 )
 

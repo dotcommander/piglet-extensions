@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/dotcommander/piglet/repomap"
+	"github.com/dotcommander/piglet-extensions/repomap"
 	sdk "github.com/dotcommander/piglet/sdk/go"
 	"gopkg.in/yaml.v3"
 )

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/dotcommander/piglet/config"
-	"github.com/dotcommander/piglet/skill"
+	"github.com/dotcommander/piglet-extensions/skill"
 	sdk "github.com/dotcommander/piglet/sdk/go"
 )
 

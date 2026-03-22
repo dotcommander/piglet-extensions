@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dotcommander/piglet/bulk"
+	"github.com/dotcommander/piglet-extensions/bulk"
 	sdk "github.com/dotcommander/piglet/sdk/go"
 )
 

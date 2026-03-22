@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"sync/atomic"
 
-	"github.com/dotcommander/piglet/autotitle"
+	"github.com/dotcommander/piglet-extensions/autotitle"
 	"github.com/dotcommander/piglet/config"
 	"github.com/dotcommander/piglet/core"
 	"github.com/dotcommander/piglet/provider"
