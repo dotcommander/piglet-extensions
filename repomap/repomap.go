@@ -70,7 +70,7 @@ func (m *Map) Build(ctx context.Context) error {
 	}
 
 	ranked := RankFiles(parsed)
-	output := FormatMap(ranked, m.config.MaxTokens)
+	output := FormatMap(ranked, m.config.MaxTokens, false)
 
 	m.mu.Lock()
 	m.ranked = ranked
@@ -88,6 +88,24 @@ func (m *Map) String() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.output
+}
+
+// StringVerbose returns the full verbose map output (all symbols, no summarization).
+// Returns empty string if Build has not been called or produced no symbols.
+func (m *Map) StringVerbose() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.ranked) == 0 {
+		return ""
+	}
+	return FormatMap(m.ranked, 0, true) // 0 = no budget limit in verbose mode
+}
+
+// BuiltAt returns the time of the last successful build, or zero time if never built.
+func (m *Map) BuiltAt() time.Time {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.builtAt
 }
 
 // Stale reports whether any tracked file has been modified since the last build.

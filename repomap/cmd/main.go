@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/dotcommander/piglet-extensions/repomap"
@@ -14,67 +15,47 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var rm *repomap.Map
+var (
+	rm     *repomap.Map
+	ext    *sdk.Extension
+	once   sync.Once
+	built  bool
+	builtMu sync.RWMutex
+)
 
 func main() {
 	e := sdk.New("repomap", "0.1.0")
 
 	e.OnInit(func(x *sdk.Extension) {
+		ext = x
 		cfg := loadConfig()
 		rm = repomap.New(x.CWD(), cfg)
 
-		buildCtx, buildCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer buildCancel()
-		if err := rm.Build(buildCtx); err != nil {
-			x.Log("warn", "repomap initial build failed: "+err.Error())
+		// Try quick build (5s timeout) - most repos complete in <1s
+		quickCtx, quickCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := rm.Build(quickCtx); err == nil {
+			quickCancel()
+			setBuilt(true)
+			x.RegisterPromptSection(sdk.PromptSectionDef{
+				Title:   "Repository Map",
+				Content: rm.String(),
+				Order:   15,
+			})
+			return
 		}
+		quickCancel()
 
+		// Slow repo: register empty, build in background
 		x.RegisterPromptSection(sdk.PromptSectionDef{
 			Title:   "Repository Map",
-			Content: rm.String(),
+			Content: "",
 			Order:   15,
 		})
+
+		go buildInBackground()
 	})
 
-	e.RegisterTool(sdk.ToolDef{
-		Name:        "repomap_refresh",
-		Description: "Force rebuild the repository map after major file changes.",
-		Parameters: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
-		PromptHint: "Rebuild the repository map after major file changes",
-		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			if rm == nil {
-				return sdk.ErrorResult("repository map not initialized"), nil
-			}
-			if err := rm.Build(ctx); err != nil {
-				return sdk.ErrorResult("rebuild failed: " + err.Error()), nil
-			}
-			return sdk.TextResult(rm.String()), nil
-		},
-	})
-
-	e.RegisterTool(sdk.ToolDef{
-		Name:        "repomap_show",
-		Description: "Show the current repository structure map without rebuilding.",
-		Parameters: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
-		PromptHint: "Show the current repository structure map",
-		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			if rm == nil {
-				return sdk.TextResult("No repository map available."), nil
-			}
-			out := rm.String()
-			if out == "" {
-				return sdk.TextResult("No repository map available."), nil
-			}
-			return sdk.TextResult(out), nil
-		},
-	})
-
+	// Rebuild when stale (after turn ends)
 	e.RegisterEventHandler(sdk.EventHandlerDef{
 		Name:     "repomap-stale-check",
 		Priority: 50,
@@ -83,14 +64,120 @@ func main() {
 			if rm == nil || !rm.Stale() {
 				return nil
 			}
-			if err := rm.Build(ctx); err != nil {
-				return nil
-			}
+			go func() {
+				buildCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if err := rm.Build(buildCtx); err != nil {
+					ext.Log("warn", "repomap rebuild failed: "+err.Error())
+				}
+			}()
 			return nil
 		},
 	})
 
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "repomap_refresh",
+		Description: "Force rebuild the repository map after major file changes. Use verbose=true to see all symbols.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"verbose": map[string]any{
+					"type":        "boolean",
+					"description": "Show all symbols without summarization (default: false)",
+				},
+			},
+		},
+		PromptHint: "Rebuild the repository map after major file changes (verbose for full details)",
+		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			if rm == nil {
+				return sdk.ErrorResult("repository map not initialized"), nil
+			}
+			if err := rm.Build(ctx); err != nil {
+				return sdk.ErrorResult("rebuild failed: " + err.Error()), nil
+			}
+			setBuilt(true)
+			verbose, _ := args["verbose"].(bool)
+			if verbose {
+				return sdk.TextResult(rm.StringVerbose()), nil
+			}
+			return sdk.TextResult(rm.String()), nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "repomap_show",
+		Description: "Show the current repository structure map. Use verbose=true to see all symbols without summarization.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"verbose": map[string]any{
+					"type":        "boolean",
+					"description": "Show all symbols without summarization (default: false)",
+				},
+			},
+		},
+		PromptHint: "Show the current repository structure map (verbose for full details)",
+		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			if rm == nil {
+				return sdk.TextResult("Repository map not initialized."), nil
+			}
+			verbose, _ := args["verbose"].(bool)
+			var out string
+			if verbose {
+				out = rm.StringVerbose()
+			} else {
+				out = rm.String()
+			}
+			if out == "" {
+				if !isBuilt() {
+					return sdk.TextResult("Repository map is still building..."), nil
+				}
+				return sdk.TextResult("Repository map is empty (no source files found)."), nil
+			}
+			return sdk.TextResult(out), nil
+		},
+	})
+
 	e.Run()
+}
+
+func buildInBackground() {
+	ext.Notify("🗺️ Scanning repository...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	if err := rm.Build(ctx); err != nil {
+		ext.Notify("❌ Scan failed")
+		ext.Log("warn", "repomap background build failed: "+err.Error())
+		return
+	}
+
+	elapsed := time.Since(start).Round(time.Millisecond)
+	out := rm.String()
+	if out == "" {
+		ext.Notify("⚠️ No source files found")
+		ext.Log("warn", "repomap produced empty output")
+		setBuilt(true)
+		return
+	}
+
+	setBuilt(true)
+	ext.Notify("✓ Map ready")
+	ext.Log("info", "repomap built in "+elapsed.String())
+}
+
+func setBuilt(v bool) {
+	builtMu.Lock()
+	built = v
+	builtMu.Unlock()
+}
+
+func isBuilt() bool {
+	builtMu.RLock()
+	defer builtMu.RUnlock()
+	return built
 }
 
 // pigletConfig mirrors the relevant subset of ~/.config/piglet/config.yaml.

@@ -2,6 +2,7 @@ package repomap
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -276,7 +277,7 @@ func TestFormatMap(t *testing.T) {
 		Score: 0,
 	}
 
-	out := FormatMap([]RankedFile{entry, mid, low}, 8192)
+	out := FormatMap([]RankedFile{entry, mid, low}, 8192, false)
 
 	assert.True(t, strings.HasPrefix(out, "## Repository Map"), "output must start with '## Repository Map'")
 	assert.Contains(t, out, "[entry]")
@@ -314,7 +315,7 @@ func TestFormatMap_TokenBudget(t *testing.T) {
 	}
 
 	// maxTokens=3 → budgetBytes=12, far smaller than any single file block.
-	out := FormatMap(files, 3)
+	out := FormatMap(files, 3, false)
 	assert.NotEmpty(t, out)
 
 	// Footer must appear because not all content fits.
@@ -326,10 +327,10 @@ func TestFormatMap_TokenBudget(t *testing.T) {
 func TestFormatMap_Empty(t *testing.T) {
 	t.Parallel()
 
-	out := FormatMap(nil, 4096)
+	out := FormatMap(nil, 4096, false)
 	assert.Equal(t, "", out)
 
-	out = FormatMap([]RankedFile{}, 4096)
+	out = FormatMap([]RankedFile{}, 4096, false)
 	assert.Equal(t, "", out)
 }
 
@@ -442,4 +443,36 @@ func Init() {}
 	assert.Contains(t, out, "New")
 	assert.Contains(t, out, "Run")
 	assert.Contains(t, out, "Version")
+}
+
+// TestFormatMap_Verbose verifies that verbose mode shows all symbols without summarization.
+func TestFormatMap_Verbose(t *testing.T) {
+	t.Parallel()
+
+	// Create files with many symbols to test summarization vs verbose
+	makeFile := func(path string, nSymbols int) RankedFile {
+		syms := make([]Symbol, nSymbols)
+		for i := 0; i < nSymbols; i++ {
+			syms[i] = Symbol{Name: fmt.Sprintf("Symbol%d", i), Kind: "function"}
+		}
+		return RankedFile{
+			FileSymbols: FileSymbols{Path: path, Symbols: syms},
+			Score:       10,
+		}
+	}
+
+	files := []RankedFile{
+		makeFile("big.go", 10),
+		makeFile("small.go", 2),
+	}
+
+	// Compressed mode should have "..." for truncation
+	compressed := FormatMap(files, 8192, false)
+	assert.Contains(t, compressed, "...")
+	assert.Contains(t, compressed, "(10 total)")
+
+	// Verbose mode should show all symbols without "..."
+	verbose := FormatMap(files, 8192, true)
+	assert.NotContains(t, verbose, "...")
+	assert.Contains(t, verbose, "Symbol9") // Last symbol should be visible
 }

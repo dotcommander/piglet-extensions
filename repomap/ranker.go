@@ -73,6 +73,9 @@ func applyDepthPenalty(ranked []RankedFile) {
 		if depth > 2 {
 			ranked[i].Score -= depth - 2
 		}
+		if strings.HasSuffix(ranked[i].Path, "_test.go") {
+			ranked[i].Score -= 5
+		}
 	}
 }
 
