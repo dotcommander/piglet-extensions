@@ -3,7 +3,7 @@ module github.com/dotcommander/piglet-extensions
 go 1.26
 
 require (
-	github.com/dotcommander/piglet v0.10.0
+	github.com/dotcommander/piglet v0.14.0
 	github.com/mark3labs/mcp-go v0.45.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.19.0
