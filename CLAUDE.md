@@ -17,7 +17,7 @@ go test -run TestFoo ./memory/  # single test
 
 ### Dual Registration Pattern
 
-Each extension has two entry points: `<name>/register.go` (library, `ext.App` API) and `cmd/main.go` (binary, `sdk/go` over JSON-RPC stdin/stdout). Core logic lives in the package root — both entry points call the same functions.
+Extensions have a binary entry point (`cmd/main.go`, `sdk/go` over JSON-RPC stdin/stdout). Some also have a library entry point (`register.go`, `ext.App` API) for embedded use. Core logic lives in the package root — both entry points call the same functions.
 
 ### Extension Capabilities
 
