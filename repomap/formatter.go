@@ -9,11 +9,35 @@ import (
 
 const groupPreviewLimit = 4
 
+// categoryOrder defines the display order for symbol categories.
+var categoryOrder = []struct {
+	key   string
+	label string
+}{
+	{"tests", "tests"},
+	{"types", "types"},
+	{"interfaces", "interfaces"},
+	{"classes", "classes"},
+	{"enums", "enums"},
+	{"funcs", "funcs"},
+	{"methods", "methods"},
+	{"consts", "consts"},
+	{"vars", "vars"},
+	{"other", "other"},
+}
+
+// typeKey identifies a type within a specific file.
+type typeKey struct {
+	path string
+	name string
+}
+
 // FormatMap formats ranked files into a token-budgeted text representation.
 // maxTokens controls the output size (estimated as len(text)/4).
 // Returns empty string if no files have symbols.
 // When verbose is true, shows all symbols without summarization.
-func FormatMap(files []RankedFile, maxTokens int, verbose bool) string {
+// When detail is true, shows signatures for funcs/methods and fields for structs.
+func FormatMap(files []RankedFile, maxTokens int, verbose, detail bool) string {
 	totalFiles, totalSymbols := countTotals(files)
 	if totalFiles == 0 {
 		return ""
@@ -24,16 +48,28 @@ func FormatMap(files []RankedFile, maxTokens int, verbose bool) string {
 	header := fmt.Sprintf("## Repository Map (%d files, %d symbols)\n\n", totalFiles, totalSymbols)
 	fmt.Fprint(&b, header)
 
+	// Dependency graph showing package-level import directions.
+	if graph := formatDependencyGraph(files); graph != "" {
+		fmt.Fprint(&b, graph)
+		fmt.Fprint(&b, "\n")
+	}
+
 	if verbose {
-		// Verbose mode: show everything, no budget truncation
 		for _, f := range files {
 			if len(f.Symbols) == 0 {
 				continue
 			}
-			fmt.Fprint(&b, formatFileBlockVerbose(f))
+			if detail {
+				fmt.Fprint(&b, formatFileBlockDetail(f))
+			} else {
+				fmt.Fprint(&b, formatFileBlockVerbose(f))
+			}
 		}
 		return b.String()
 	}
+
+	// Collect top-ranked struct/interface names for field display in compact mode.
+	topTypes := collectTopTypes(files, 10)
 
 	shownFiles := 0
 	shownSymbols := 0
@@ -44,9 +80,8 @@ func FormatMap(files []RankedFile, maxTokens int, verbose bool) string {
 			continue
 		}
 
-		block := formatFileBlock(f)
+		block := formatFileBlockCompact(f, topTypes)
 
-		// Always include at least the first file; truncate its groups if needed.
 		if shownFiles == 0 {
 			remaining := budgetBytes - b.Len()
 			if len(block) > remaining {
@@ -81,45 +116,18 @@ func countTotals(files []RankedFile) (int, int) {
 	return nFiles, nSymbols
 }
 
-// formatFileBlock returns the full formatted block for a single file.
-func formatFileBlock(f RankedFile) string {
-	var b strings.Builder
-	fmt.Fprint(&b, formatFileLine(f))
-	for _, line := range formatGroupLines(f) {
-		fmt.Fprintf(&b, "  %s\n", line)
-	}
-	fmt.Fprint(&b, "\n")
-	return b.String()
-}
-
 // formatFileBlockVerbose returns a verbose block showing all symbols without summarization.
 func formatFileBlockVerbose(f RankedFile) string {
 	var b strings.Builder
 	fmt.Fprint(&b, formatFileLine(f))
 
-	// Group symbols by category but show all names
 	categorized := make(map[string][]Symbol)
 	for _, s := range f.Symbols {
-		categorized[symbolCategory(f.Path, s)] = append(categorized[symbolCategory(f.Path, s)], s)
+		cat := symbolCategory(f.Path, s)
+		categorized[cat] = append(categorized[cat], s)
 	}
 
-	order := []struct {
-		key   string
-		label string
-	}{
-		{"tests", "tests"},
-		{"types", "types"},
-		{"interfaces", "interfaces"},
-		{"classes", "classes"},
-		{"enums", "enums"},
-		{"funcs", "funcs"},
-		{"methods", "methods"},
-		{"consts", "consts"},
-		{"vars", "vars"},
-		{"other", "other"},
-	}
-
-	for _, item := range order {
+	for _, item := range categoryOrder {
 		syms := categorized[item.key]
 		if len(syms) == 0 {
 			continue
@@ -134,6 +142,56 @@ func formatFileBlockVerbose(f RankedFile) string {
 		}
 		sort.Strings(names)
 		fmt.Fprintf(&b, "  %s: %s\n", item.label, strings.Join(names, ", "))
+	}
+	fmt.Fprint(&b, "\n")
+	return b.String()
+}
+
+// formatFileBlockDetail returns a detailed block showing signatures and struct fields.
+func formatFileBlockDetail(f RankedFile) string {
+	var b strings.Builder
+	fmt.Fprint(&b, formatFileLine(f))
+
+	categorized := make(map[string][]Symbol)
+	for _, s := range f.Symbols {
+		cat := symbolCategory(f.Path, s)
+		categorized[cat] = append(categorized[cat], s)
+	}
+
+	for _, item := range categoryOrder {
+		syms := categorized[item.key]
+		if len(syms) == 0 {
+			continue
+		}
+
+		sort.Slice(syms, func(i, j int) bool {
+			return syms[i].Name < syms[j].Name
+		})
+
+		var lines []string
+		for _, s := range syms {
+			var line string
+			switch {
+			case item.key == "methods" && s.Receiver != "":
+				if s.Signature != "" {
+					line = fmt.Sprintf("%s.%s%s", s.Receiver, s.Name, s.Signature)
+				} else {
+					line = fmt.Sprintf("%s.%s", s.Receiver, s.Name)
+				}
+			case (item.key == "types" || item.key == "interfaces") && s.Signature != "":
+				line = fmt.Sprintf("%s %s", s.Name, s.Signature)
+			case item.key == "funcs" && s.Signature != "":
+				line = fmt.Sprintf("%s%s", s.Name, s.Signature)
+			default:
+				line = s.Name
+			}
+			lines = append(lines, line)
+		}
+
+		fmt.Fprintf(&b, "  %s:\n", item.label)
+		for _, line := range lines {
+			fmt.Fprintf(&b, "    %s\n", line)
+		}
 	}
 	fmt.Fprint(&b, "\n")
 	return b.String()
@@ -169,27 +227,12 @@ type symbolGroup struct {
 func summarizeSymbols(f RankedFile) []symbolGroup {
 	categorized := make(map[string][]Symbol)
 	for _, s := range f.Symbols {
-		categorized[symbolCategory(f.Path, s)] = append(categorized[symbolCategory(f.Path, s)], s)
-	}
-
-	order := []struct {
-		key   string
-		label string
-	}{
-		{"tests", "tests"},
-		{"types", "types"},
-		{"interfaces", "interfaces"},
-		{"classes", "classes"},
-		{"enums", "enums"},
-		{"funcs", "funcs"},
-		{"methods", "methods"},
-		{"consts", "consts"},
-		{"vars", "vars"},
-		{"other", "other"},
+		cat := symbolCategory(f.Path, s)
+		categorized[cat] = append(categorized[cat], s)
 	}
 
 	var groups []symbolGroup
-	for _, item := range order {
+	for _, item := range categoryOrder {
 		syms := categorized[item.key]
 		if len(syms) == 0 {
 			continue
@@ -378,4 +421,129 @@ func truncateFileBlock(f RankedFile, byteLimit int) string {
 func isTestFile(path string) bool {
 	base := filepath.Base(path)
 	return strings.HasSuffix(base, "_test.go")
+}
+
+// formatFileBlockCompact returns the compact block with struct fields for top-ranked types.
+func formatFileBlockCompact(f RankedFile, topTypes map[typeKey]bool) string {
+	var b strings.Builder
+	fmt.Fprint(&b, formatFileLine(f))
+
+	groups := summarizeSymbols(f)
+	for _, g := range groups {
+		fmt.Fprintf(&b, "  %s: %s\n", g.label, g.summary)
+	}
+
+	for _, s := range f.Symbols {
+		if s.Signature == "" || s.Signature == "{}" {
+			continue
+		}
+		if (s.Kind == "struct" || s.Kind == "interface") && topTypes[typeKey{f.Path, s.Name}] {
+			fmt.Fprintf(&b, "  %s %s\n", s.Name, s.Signature)
+		}
+	}
+
+	fmt.Fprint(&b, "\n")
+	return b.String()
+}
+
+// collectTopTypes returns a set of path+name keys for the top N ranked
+// struct/interface types across all files. These get their fields shown
+// in compact mode.
+func collectTopTypes(files []RankedFile, limit int) map[typeKey]bool {
+	type candidate struct {
+		key   typeKey
+		score int
+	}
+	var candidates []candidate
+
+	for _, f := range files {
+		for _, s := range f.Symbols {
+			if (s.Kind == "struct" || s.Kind == "interface") && s.Signature != "" && s.Signature != "{}" {
+				candidates = append(candidates, candidate{
+					key:   typeKey{f.Path, s.Name},
+					score: f.Score,
+				})
+			}
+		}
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].score > candidates[j].score
+	})
+
+	result := make(map[typeKey]bool, limit)
+	for i, c := range candidates {
+		if i >= limit {
+			break
+		}
+		result[c.key] = true
+	}
+	return result
+}
+
+// formatDependencyGraph builds a compact package dependency graph header.
+// Only shows Go packages with import paths and at least one internal dependency.
+func formatDependencyGraph(files []RankedFile) string {
+	internalPkgs := make(map[string]bool)
+	for _, f := range files {
+		if f.ImportPath != "" {
+			internalPkgs[f.ImportPath] = true
+		}
+	}
+	if len(internalPkgs) < 2 {
+		return ""
+	}
+
+	// Map package import path to its internal dependencies (deduped).
+	pkgDeps := make(map[string]map[string]bool)
+	for _, f := range files {
+		if f.ImportPath == "" {
+			continue
+		}
+		for _, imp := range f.Imports {
+			if internalPkgs[imp] && imp != f.ImportPath {
+				if pkgDeps[f.ImportPath] == nil {
+					pkgDeps[f.ImportPath] = make(map[string]bool)
+				}
+				pkgDeps[f.ImportPath][imp] = true
+			}
+		}
+	}
+
+	if len(pkgDeps) == 0 {
+		return ""
+	}
+
+	// Find shortest common prefix to trim for readability.
+	allPaths := make([]string, 0, len(internalPkgs))
+	for p := range internalPkgs {
+		allPaths = append(allPaths, p)
+	}
+	sort.Strings(allPaths)
+	prefix := longestCommonPrefix(allPaths)
+	if idx := strings.LastIndex(prefix, "/"); idx >= 0 {
+		prefix = prefix[:idx+1]
+	}
+
+	var b strings.Builder
+	fmt.Fprint(&b, "### Dependencies\n")
+
+	// Sort packages for deterministic output.
+	sortedPkgs := make([]string, 0, len(pkgDeps))
+	for p := range pkgDeps {
+		sortedPkgs = append(sortedPkgs, p)
+	}
+	sort.Strings(sortedPkgs)
+
+	for _, pkg := range sortedPkgs {
+		deps := pkgDeps[pkg]
+		depNames := make([]string, 0, len(deps))
+		for d := range deps {
+			depNames = append(depNames, strings.TrimPrefix(d, prefix))
+		}
+		sort.Strings(depNames)
+		fmt.Fprintf(&b, "%s → %s\n", strings.TrimPrefix(pkg, prefix), strings.Join(depNames, ", "))
+	}
+
+	return b.String()
 }

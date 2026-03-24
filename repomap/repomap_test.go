@@ -277,7 +277,7 @@ func TestFormatMap(t *testing.T) {
 		Score: 0,
 	}
 
-	out := FormatMap([]RankedFile{entry, mid, low}, 8192, false)
+	out := FormatMap([]RankedFile{entry, mid, low}, 8192, false, false)
 
 	assert.True(t, strings.HasPrefix(out, "## Repository Map"), "output must start with '## Repository Map'")
 	assert.Contains(t, out, "[entry]")
@@ -315,7 +315,7 @@ func TestFormatMap_TokenBudget(t *testing.T) {
 	}
 
 	// maxTokens=3 → budgetBytes=12, far smaller than any single file block.
-	out := FormatMap(files, 3, false)
+	out := FormatMap(files, 3, false, false)
 	assert.NotEmpty(t, out)
 
 	// Footer must appear because not all content fits.
@@ -327,10 +327,10 @@ func TestFormatMap_TokenBudget(t *testing.T) {
 func TestFormatMap_Empty(t *testing.T) {
 	t.Parallel()
 
-	out := FormatMap(nil, 4096, false)
+	out := FormatMap(nil, 4096, false, false)
 	assert.Equal(t, "", out)
 
-	out = FormatMap([]RankedFile{}, 4096, false)
+	out = FormatMap([]RankedFile{}, 4096, false, false)
 	assert.Equal(t, "", out)
 }
 
@@ -467,12 +467,12 @@ func TestFormatMap_Verbose(t *testing.T) {
 	}
 
 	// Compressed mode should have "..." for truncation
-	compressed := FormatMap(files, 8192, false)
+	compressed := FormatMap(files, 8192, false, false)
 	assert.Contains(t, compressed, "...")
 	assert.Contains(t, compressed, "(10 total)")
 
 	// Verbose mode should show all symbols without "..."
-	verbose := FormatMap(files, 8192, true)
+	verbose := FormatMap(files, 8192, true, false)
 	assert.NotContains(t, verbose, "...")
 	assert.Contains(t, verbose, "Symbol9") // Last symbol should be visible
 }

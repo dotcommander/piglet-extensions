@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/dotcommander/piglet-extensions/repomap"
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 	"gopkg.in/yaml.v3"
 )
 

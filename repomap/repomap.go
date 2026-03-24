@@ -70,7 +70,7 @@ func (m *Map) Build(ctx context.Context) error {
 	}
 
 	ranked := RankFiles(parsed)
-	output := FormatMap(ranked, m.config.MaxTokens, false)
+	output := FormatMap(ranked, m.config.MaxTokens, false, false)
 
 	m.mu.Lock()
 	m.ranked = ranked
@@ -98,7 +98,18 @@ func (m *Map) StringVerbose() string {
 	if len(m.ranked) == 0 {
 		return ""
 	}
-	return FormatMap(m.ranked, 0, true) // 0 = no budget limit in verbose mode
+	return FormatMap(m.ranked, 0, true, false) // verbose=true, detail=false
+}
+
+// StringDetail returns the full detailed map output with signatures and struct fields.
+// Returns empty string if Build has not been called or produced no symbols.
+func (m *Map) StringDetail() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.ranked) == 0 {
+		return ""
+	}
+	return FormatMap(m.ranked, 0, true, true) // verbose=true, detail=true
 }
 
 // BuiltAt returns the time of the last successful build, or zero time if never built.
@@ -136,43 +147,38 @@ func (m *Map) Stale() bool {
 
 // parseFiles parses all discovered files in parallel and returns the symbols
 // and a path→mtime map for stale checking.
+// Uses ctags for non-Go files when available, falling back to regex.
 func (m *Map) parseFiles(ctx context.Context, files []FileInfo) ([]*FileSymbols, map[string]time.Time, error) {
-	type result struct {
-		symbols *FileSymbols
-		path    string
-		mtime   time.Time
+	// Collect mtimes for all files.
+	mtimes := make(map[string]time.Time, len(files))
+	for _, fi := range files {
+		absPath := filepath.Join(m.root, fi.Path)
+		info, err := os.Stat(absPath)
+		if err != nil {
+			continue
+		}
+		mtimes[absPath] = info.ModTime()
 	}
 
-	results := make([]result, len(files))
-
-	g, ctx := errgroup.WithContext(ctx)
+	// Parse Go files in parallel with errgroup.
+	type result struct {
+		symbols *FileSymbols
+	}
+	goResults := make([]result, len(files))
+	g, _ := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.NumCPU())
 
 	for i, fi := range files {
+		if fi.Language != "go" {
+			continue
+		}
 		g.Go(func() error {
 			absPath := filepath.Join(m.root, fi.Path)
-
-			info, err := os.Stat(absPath)
-			if err != nil {
-				return nil //nolint:nilerr // skip unreadable files
-			}
-			mtime := info.ModTime()
-
-			var sym *FileSymbols
-			if fi.Language == "go" {
-				sym, err = ParseGoFile(absPath, m.root)
-			} else {
-				sym, err = ParseGenericFile(absPath, m.root, fi.Language)
-			}
+			sym, err := ParseGoFile(absPath, m.root)
 			if err != nil {
 				return nil //nolint:nilerr // skip parse errors
 			}
-
-			results[i] = result{
-				symbols: sym,
-				path:    absPath,
-				mtime:   mtime,
-			}
+			goResults[i] = result{symbols: sym}
 			return nil
 		})
 	}
@@ -181,18 +187,43 @@ func (m *Map) parseFiles(ctx context.Context, files []FileInfo) ([]*FileSymbols,
 		return nil, nil, err
 	}
 
-	parsed := make([]*FileSymbols, 0, len(results))
-	mtimes := make(map[string]time.Time, len(results))
-
-	for _, r := range results {
+	parsed := make([]*FileSymbols, 0, len(files))
+	for _, r := range goResults {
 		if r.symbols != nil {
 			parsed = append(parsed, r.symbols)
 		}
-		if !r.mtime.IsZero() {
-			mtimes[r.path] = r.mtime
+	}
+
+	// Parse non-Go files: ctags batch or regex fallback.
+	if CtagsAvailable() {
+		ctagsParsed, err := ParseWithCtags(ctx, m.root, files)
+		if err == nil {
+			parsed = append(parsed, ctagsParsed...)
+		} else {
+			// ctags failed — fall back to regex for non-Go files.
+			parsed = append(parsed, m.parseGenericFiles(files)...)
 		}
+	} else {
+		parsed = append(parsed, m.parseGenericFiles(files)...)
 	}
 
 	return parsed, mtimes, nil
+}
+
+// parseGenericFiles parses non-Go files using regex patterns.
+func (m *Map) parseGenericFiles(files []FileInfo) []*FileSymbols {
+	var result []*FileSymbols
+	for _, fi := range files {
+		if fi.Language == "go" {
+			continue
+		}
+		absPath := filepath.Join(m.root, fi.Path)
+		sym, err := ParseGenericFile(absPath, m.root, fi.Language)
+		if err != nil {
+			continue
+		}
+		result = append(result, sym)
+	}
+	return result
 }
 
