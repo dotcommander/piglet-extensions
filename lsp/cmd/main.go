@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/dotcommander/piglet-extensions/lsp"
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 var mgr *lsp.Manager

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/dotcommander/piglet-extensions/bulk"
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 func main() {

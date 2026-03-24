@@ -3,7 +3,7 @@ module github.com/dotcommander/piglet-extensions
 go 1.26
 
 require (
-	github.com/dotcommander/piglet v0.15.0
+	github.com/dotcommander/piglet/sdk v1.0.0
 	github.com/mark3labs/mcp-go v0.45.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.19.0
@@ -22,3 +22,5 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 )
+
+replace github.com/dotcommander/piglet/sdk => ../piglet/sdk

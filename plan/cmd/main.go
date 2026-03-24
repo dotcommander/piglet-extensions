@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/dotcommander/piglet-extensions/plan"
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 var store *plan.Store

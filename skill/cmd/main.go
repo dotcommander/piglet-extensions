@@ -5,12 +5,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/dotcommander/piglet/config"
 	"github.com/dotcommander/piglet-extensions/skill"
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 var store *skill.Store
@@ -19,10 +19,11 @@ func main() {
 	e := sdk.New("skill", "0.1.0")
 
 	e.OnInit(func(_ *sdk.Extension) {
-		dir, err := config.ConfigDir()
+		base, err := os.UserConfigDir()
 		if err != nil {
 			return
 		}
+		dir := filepath.Join(base, "piglet")
 		store = skill.NewStore(filepath.Join(dir, "skills"))
 		if len(store.List()) == 0 {
 			store = nil

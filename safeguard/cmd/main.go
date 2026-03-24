@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/dotcommander/piglet-extensions/safeguard"
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 func main() {

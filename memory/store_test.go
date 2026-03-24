@@ -6,7 +6,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dotcommander/piglet/ext"
 	"github.com/dotcommander/piglet-extensions/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -196,18 +195,3 @@ func TestStoreEmptyCwd(t *testing.T) {
 	assert.NotEmpty(t, s.Path())
 }
 
-func TestRegister(t *testing.T) {
-	t.Parallel()
-
-	app := ext.NewApp(t.TempDir())
-	memory.Register(app)
-
-	tools := app.Tools()
-	assert.Contains(t, tools, "memory_set")
-	assert.Contains(t, tools, "memory_get")
-	assert.Contains(t, tools, "memory_list")
-
-	commands := app.Commands()
-	_, ok := commands["memory"]
-	assert.True(t, ok, "expected /memory command to be registered")
-}

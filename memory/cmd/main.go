@@ -6,14 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
 	"strings"
 
-	"github.com/dotcommander/piglet/config"
-	"github.com/dotcommander/piglet/core"
 	"github.com/dotcommander/piglet-extensions/memory"
-	"github.com/dotcommander/piglet/provider"
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 var (
@@ -24,7 +20,6 @@ var (
 func main() {
 	e := sdk.New("memory", "0.1.0")
 
-	// Initialize store after host sends CWD
 	e.OnInit(func(x *sdk.Extension) {
 		s, err := memory.NewStore(x.CWD())
 		if err != nil {
@@ -33,21 +28,25 @@ func main() {
 		store = s
 		extractor = memory.NewExtractor(s)
 
-		// Register prompt section with current memory contents
 		x.RegisterPromptSection(sdk.PromptSectionDef{
 			Title:   "Project Memory",
 			Content: memory.BuildMemoryPrompt(s),
 			Order:   50,
 		})
 
-		// Register compactor (uses memory store + optional LLM refinement)
-		settings, _ := config.Load()
-		prov := createProvider(settings)
-		threshold := config.IntOr(settings.Agent.CompactAt, 0)
+		// Get compaction threshold from host config
+		threshold := 0
+		vals, err := x.ConfigGet(context.Background(), "agent.compactAt")
+		if err == nil {
+			if v, ok := vals["agent.compactAt"].(float64); ok {
+				threshold = int(v)
+			}
+		}
+
 		x.RegisterCompactor(sdk.CompactorDef{
 			Name:      "rolling-memory",
 			Threshold: threshold,
-			Compact:   makeCompactHandler(s, prov),
+			Compact:   makeCompactHandler(x, s),
 		})
 	})
 
@@ -223,104 +222,74 @@ func main() {
 	e.Run()
 }
 
-// createProvider creates a lightweight LLM provider for summary refinement.
-func createProvider(settings config.Settings) core.StreamProvider {
-	auth, err := config.NewAuthDefault()
-	if err != nil {
-		return nil
-	}
-
-	modelQuery := settings.ResolveSmallModel()
-	if modelQuery == "" {
-		return nil
-	}
-
-	registry := provider.NewRegistry()
-	model, ok := registry.Resolve(modelQuery)
-	if !ok {
-		return nil
-	}
-
-	prov, err := registry.Create(model, func() string {
-		return auth.GetAPIKey(model.Provider)
-	})
-	if err != nil {
-		return nil
-	}
-	return prov
+type wireMsg struct {
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
 }
 
-// makeCompactHandler returns the SDK compact handler that bridges JSON messages
-// to the memory.CompactFn logic.
-func makeCompactHandler(s *memory.Store, prov core.StreamProvider) func(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
-	compactFn := memory.CompactFn(s, prov)
-
+// makeCompactHandler returns the SDK compact handler that works with raw JSON messages.
+// It reads facts from the store, optionally refines with an LLM call, and keeps
+// the last keepRecent messages prepended with a summary reference message.
+func makeCompactHandler(ext *sdk.Extension, s *memory.Store) func(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
 	return func(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
 		// Parse incoming messages
 		var params struct {
-			Messages []struct {
-				Type string          `json:"type"`
-				Data json.RawMessage `json:"data"`
-			} `json:"messages"`
+			Messages []wireMsg `json:"messages"`
 		}
 		if err := json.Unmarshal(raw, &params); err != nil {
 			return nil, fmt.Errorf("unmarshal compact params: %w", err)
 		}
 
-		// Deserialize to core.Message
-		msgs := make([]core.Message, 0, len(params.Messages))
-		for _, cm := range params.Messages {
-			switch cm.Type {
-			case "user":
-				var msg core.UserMessage
-				if json.Unmarshal(cm.Data, &msg) == nil {
-					msgs = append(msgs, &msg)
-				}
-			case "assistant":
-				var msg core.AssistantMessage
-				if json.Unmarshal(cm.Data, &msg) == nil {
-					msgs = append(msgs, &msg)
-				}
-			case "tool_result":
-				var msg core.ToolResultMessage
-				if json.Unmarshal(cm.Data, &msg) == nil {
-					msgs = append(msgs, &msg)
-				}
+		const keepRecent = 6
+		if len(params.Messages) <= keepRecent+1 {
+			// Not enough to compact — return as-is
+			return raw, nil
+		}
+
+		// Get fact summary from store
+		result := memory.Compact(s)
+		summary := result.Summary
+
+		// Try to refine with LLM if we have facts
+		if summary != "" {
+			resp, err := ext.Chat(ctx, sdk.ChatRequest{
+				System:   "Given these extracted facts from a coding session, produce a concise structured summary. Group by: files touched, decisions made, errors resolved, current task state. Be brief — 5-10 lines max.",
+				Messages: []sdk.ChatMessage{{Role: "user", Content: summary}},
+				Model:    "small",
+			})
+			if err == nil && resp.Text != "" {
+				summary = resp.Text
 			}
 		}
 
-		// Run compaction
-		compacted, err := compactFn(ctx, msgs)
+		// Write summary back to store
+		memory.WriteSummary(s, summary)
+
+		// Build reference message content
+		var ref strings.Builder
+		ref.WriteString("[Context compacted — session memory updated]\n\n")
+		ref.WriteString("Use memory_list category=_context to see accumulated context.\n")
+		ref.WriteString("Use memory_get to retrieve specific facts.\n")
+		if summary != "" {
+			ref.WriteString("\nSummary: ")
+			ref.WriteString(summary)
+		}
+
+		// Build summary user message as wire format
+		summaryData, err := json.Marshal(map[string]any{
+			"role":    "user",
+			"content": ref.String(),
+		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("marshal summary message: %w", err)
 		}
 
-		// Serialize result
-		type wireMsg struct {
-			Type string          `json:"type"`
-			Data json.RawMessage `json:"data"`
-		}
-		wire := make([]wireMsg, 0, len(compacted))
-		for _, m := range compacted {
-			var msgType string
-			switch m.(type) {
-			case *core.UserMessage:
-				msgType = "user"
-			case *core.AssistantMessage:
-				msgType = "assistant"
-			case *core.ToolResultMessage:
-				msgType = "tool_result"
-			default:
-				continue
-			}
-			data, err := json.Marshal(m)
-			if err != nil {
-				continue
-			}
-			wire = append(wire, wireMsg{Type: msgType, Data: data})
-		}
+		// Keep last keepRecent messages, prepend summary
+		kept := params.Messages[len(params.Messages)-keepRecent:]
+		wire := make([]wireMsg, 0, len(kept)+1)
+		wire = append(wire, wireMsg{Type: "user", Data: summaryData})
+		wire = append(wire, kept...)
 
 		return json.Marshal(map[string]any{"messages": wire})
 	}
 }
-

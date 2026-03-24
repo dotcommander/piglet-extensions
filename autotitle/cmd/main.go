@@ -1,104 +1,78 @@
 // Autotitle extension binary. Generates session titles after first exchange.
 // Communicates with piglet host via JSON-RPC over stdin/stdout.
-// Creates its own LLM provider to generate titles independently.
+// Uses the SDK host Chat method to generate titles without a direct provider dependency.
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync/atomic"
 
-	"github.com/dotcommander/piglet-extensions/autotitle"
-	"github.com/dotcommander/piglet/config"
-	"github.com/dotcommander/piglet/core"
-	"github.com/dotcommander/piglet/provider"
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+const maxTitleRunes = 50
 
 func main() {
 	e := sdk.New("autotitle", "0.1.0")
 
-	prompt := autotitle.LoadPrompt()
-	if prompt == "" {
-		// No prompt file — run as no-op
-		e.Run()
-		return
-	}
-
 	var fired atomic.Bool
 
-	e.RegisterEventHandler(sdk.EventHandlerDef{
-		Name:     "autotitle",
-		Priority: 100,
-		Events:   []string{"EventAgentEnd"},
-		Handle: func(_ context.Context, eventType string, data json.RawMessage) *sdk.Action {
-			if !fired.CompareAndSwap(false, true) {
-				return nil
-			}
+	e.OnInit(func(_ *sdk.Extension) {
+		prompt, err := e.ConfigReadExtension(context.Background(), "autotitle")
+		if err != nil || prompt == "" {
+			// No prompt file — run as no-op
+			return
+		}
 
-			// Parse EventAgentEnd to get conversation messages
-			var evt struct {
-				Messages []json.RawMessage `json:"Messages"`
-			}
-			if err := json.Unmarshal(data, &evt); err != nil || len(evt.Messages) < 2 {
-				fired.Store(false)
-				return nil
-			}
+		e.RegisterEventHandler(sdk.EventHandlerDef{
+			Name:     "autotitle",
+			Priority: 100,
+			Events:   []string{"EventAgentEnd"},
+			Handle: func(_ context.Context, _ string, data json.RawMessage) *sdk.Action {
+				if !fired.CompareAndSwap(false, true) {
+					return nil
+				}
 
-			// Extract first user and assistant text from messages
-			userText, assistantText := extractFirstExchange(evt.Messages)
-			if userText == "" {
-				fired.Store(false)
-				return nil
-			}
+				var evt struct {
+					Messages []json.RawMessage `json:"Messages"`
+				}
+				if err := json.Unmarshal(data, &evt); err != nil || len(evt.Messages) < 2 {
+					fired.Store(false)
+					return nil
+				}
 
-			// Create a lightweight provider for title generation
-			prov := createProvider()
-			if prov == nil {
-				fired.Store(false)
-				return nil
-			}
+				userText, assistantText := extractFirstExchange(evt.Messages)
+				if userText == "" {
+					fired.Store(false)
+					return nil
+				}
 
-			title := autotitle.GenerateTitle(context.Background(), prov, buildMessages(userText, assistantText), prompt)
-			if title != "" {
-				return sdk.ActionSetSessionTitle(title)
-			}
-			return nil
-		},
+				content := "User: " + truncate(userText, 200) + "\n\nAssistant: " + truncate(assistantText, 200)
+
+				resp, err := e.Chat(context.Background(), sdk.ChatRequest{
+					System:    prompt,
+					Messages:  []sdk.ChatMessage{{Role: "user", Content: content}},
+					Model:     "small",
+					MaxTokens: 30,
+				})
+				if err != nil || resp.Text == "" {
+					fired.Store(false)
+					return nil
+				}
+
+				title := strings.TrimSpace(resp.Text)
+				title = truncate(title, maxTitleRunes)
+				if title != "" {
+					return sdk.ActionSetSessionTitle(title)
+				}
+				return nil
+			},
+		})
 	})
 
 	e.Run()
-}
-
-func createProvider() core.StreamProvider {
-	auth, err := config.NewAuthDefault()
-	if err != nil {
-		return nil
-	}
-
-	settings, err := config.Load()
-	if err != nil {
-		return nil
-	}
-
-	modelQuery := settings.ResolveSmallModel()
-	if modelQuery == "" {
-		return nil
-	}
-
-	registry := provider.NewRegistry()
-	model, ok := registry.Resolve(modelQuery)
-	if !ok {
-		return nil
-	}
-
-	prov, err := registry.Create(model, func() string {
-		return auth.GetAPIKey(model.Provider)
-	})
-	if err != nil {
-		return nil
-	}
-	return prov
 }
 
 func extractFirstExchange(messages []json.RawMessage) (userText, assistantText string) {
@@ -123,14 +97,10 @@ func extractFirstExchange(messages []json.RawMessage) (userText, assistantText s
 	return
 }
 
-func buildMessages(userText, assistantText string) []core.Message {
-	msgs := []core.Message{
-		&core.UserMessage{Content: userText},
+func truncate(s string, limit int) string {
+	runes := []rune(s)
+	if len(runes) > limit {
+		return string(runes[:limit])
 	}
-	if assistantText != "" {
-		msgs = append(msgs, &core.AssistantMessage{
-			Content: []core.AssistantContent{core.TextContent{Text: assistantText}},
-		})
-	}
-	return msgs
+	return s
 }

@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-
-	"github.com/dotcommander/piglet/core"
 )
 
+// ImageData holds base64-encoded image data.
+type ImageData struct {
+	Data     string
+	MimeType string
+}
+
 // ReadImage reads an image from the macOS clipboard.
-// Returns the image as base64-encoded ImageContent, or an error if no image is available.
-func ReadImage() (*core.ImageContent, error) {
+// Returns the image as base64-encoded ImageData, or an error if no image is available.
+func ReadImage() (*ImageData, error) {
 	cmd := exec.Command("osascript", "-e", "the clipboard info")
 	info, err := cmd.Output()
 	if err != nil {
@@ -40,7 +44,7 @@ close access theFile`)
 	}
 
 	encoded := base64.StdEncoding.EncodeToString(data)
-	return &core.ImageContent{
+	return &ImageData{
 		Data:     encoded,
 		MimeType: mime,
 	}, nil

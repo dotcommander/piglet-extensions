@@ -10,34 +10,7 @@ import (
 	"maps"
 	"os/exec"
 	"strings"
-
-	"github.com/dotcommander/piglet/ext"
 )
-
-// Register adds the RTK interceptor and prompt hint to app.
-// enabled: nil = auto-detect, true = require, false = skip.
-func Register(app *ext.App, enabled *bool) {
-	if enabled != nil && !*enabled {
-		return
-	}
-
-	rtkPath, err := exec.LookPath("rtk")
-	if err != nil {
-		return
-	}
-
-	app.RegisterInterceptor(ext.Interceptor{
-		Name:     "rtk",
-		Priority: 100,
-		Before:   rewriter(rtkPath),
-	})
-
-	app.RegisterPromptSection(ext.PromptSection{
-		Title:   "RTK Token Optimization",
-		Content: "Bash commands are automatically optimized by RTK for reduced token output. No action needed.",
-		Order:   90, // low priority, informational
-	})
-}
 
 func rewriter(rtkPath string) func(ctx context.Context, toolName string, args map[string]any) (bool, map[string]any, error) {
 	return func(ctx context.Context, toolName string, args map[string]any) (bool, map[string]any, error) {

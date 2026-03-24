@@ -58,10 +58,9 @@ Each extension follows the same structure:
 ```
 <name>/
   cmd/
-    main.go          # entry point
+    main.go          # entry point (SDK-only, JSON-RPC)
     manifest.yaml    # name, version, runtime, capabilities
-  <name>.go          # core logic
-  register.go        # wires into piglet's ext.App
+  <name>.go          # core logic (pure business logic, no piglet imports)
 ```
 
 Build a single extension:

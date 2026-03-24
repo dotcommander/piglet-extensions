@@ -1,69 +1,54 @@
 package memory
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/dotcommander/piglet/core"
 )
 
-func TestCompactFnMinMessages(t *testing.T) {
+func TestCompactNoFacts(t *testing.T) {
 	t.Parallel()
 	store := testStore(t)
-	fn := CompactFn(store, nil)
 
-	// With fewer than keepRecent+1 messages, should return unchanged
-	msgs := []core.Message{
-		&core.UserMessage{Content: "hello"},
-		&core.AssistantMessage{Content: []core.AssistantContent{core.TextContent{Text: "hi"}}},
-	}
-
-	result, err := fn(context.Background(), msgs)
-	require.NoError(t, err)
-	assert.Equal(t, msgs, result)
+	result := Compact(store)
+	assert.Equal(t, "", result.Summary)
+	assert.Equal(t, 0, result.FactCount)
 }
 
-func TestCompactFnWithFacts(t *testing.T) {
+func TestCompactWithFacts(t *testing.T) {
 	t.Parallel()
 	store := testStore(t)
 
-	// Pre-populate some context facts
 	_ = store.Set("ctx:file:/src/main.go", "read, 50 lines", contextCategory)
 	_ = store.Set("ctx:edit:/src/main.go", "added handler", contextCategory)
 	_ = store.Set("ctx:error:1", "go build: undefined Foo", contextCategory)
 
-	fn := CompactFn(store, nil) // no LLM provider
+	result := Compact(store)
+	assert.Equal(t, 3, result.FactCount)
+	assert.Contains(t, result.Summary, "/src/main.go")
+	assert.Contains(t, result.Summary, "added handler")
+	assert.Contains(t, result.Summary, "undefined Foo")
+}
 
-	// Build enough messages to trigger compaction
-	msgs := make([]core.Message, 0, 10)
-	msgs = append(msgs, &core.UserMessage{Content: "initial task"})
-	for range 9 {
-		msgs = append(msgs, &core.AssistantMessage{
-			Content: []core.AssistantContent{core.TextContent{Text: "response"}},
-		})
-	}
+func TestWriteSummary(t *testing.T) {
+	t.Parallel()
+	store := testStore(t)
 
-	result, err := fn(context.Background(), msgs)
-	require.NoError(t, err)
+	WriteSummary(store, "session summary text")
 
-	// Should be compacted: first + summary + last 6 = 8
-	assert.Equal(t, keepRecent+2, len(result))
-
-	// Summary message should reference memory
-	if am, ok := result[1].(*core.AssistantMessage); ok {
-		text := am.Content[0].(core.TextContent).Text
-		assert.Contains(t, text, "Context compacted")
-		assert.Contains(t, text, "memory_list")
-		assert.Contains(t, text, "main.go")
-	}
-
-	// ctx:summary should be stored
-	summary, ok := store.Get("ctx:summary")
+	fact, ok := store.Get("ctx:summary")
 	assert.True(t, ok)
-	assert.Contains(t, summary.Value, "main.go")
+	assert.Equal(t, "session summary text", fact.Value)
+}
+
+func TestWriteSummaryEmpty(t *testing.T) {
+	t.Parallel()
+	store := testStore(t)
+
+	WriteSummary(store, "")
+
+	_, ok := store.Get("ctx:summary")
+	assert.False(t, ok)
 }
 
 func TestBuildFactSummary(t *testing.T) {

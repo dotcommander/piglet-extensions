@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 func main() {

@@ -15,9 +15,9 @@ go test -run TestFoo ./memory/  # single test
 
 ## Architecture
 
-### Dual Registration Pattern
+### SDK-Only Architecture
 
-Extensions have a binary entry point (`cmd/main.go`, `sdk/go` over JSON-RPC stdin/stdout). Some also have a library entry point (`register.go`, `ext.App` API) for embedded use. Core logic lives in the package root — both entry points call the same functions.
+Extensions are standalone binaries communicating via JSON-RPC over stdin/stdout using the Go SDK (`github.com/dotcommander/piglet/sdk`). Core logic lives in the package root — `cmd/main.go` bridges SDK types to business logic.
 
 ### Extension Capabilities
 
@@ -36,7 +36,8 @@ Declared in `cmd/manifest.yaml`:
 ### Key Patterns
 
 - **OnInit for CWD-dependent state**: External binaries use `ext.OnInit(func(e *sdk.Extension) { ... })` to initialize after the host sends CWD. See `safeguard/cmd/main.go` and `memory/cmd/main.go`.
-- **Config from `~/.config/piglet/`**: Read via `config.ReadExtensionConfig()` or `config.ConfigDir()`. Never hardcode behavioral content in Go source.
+- **Config from `~/.config/piglet/`**: Read via `e.ConfigReadExtension()` (host protocol) or `os.UserConfigDir()`. Never hardcode behavioral content in Go source.
+- **Host protocol methods (v3)**: Extensions can call `e.ConfigGet()`, `e.ConfigReadExtension()`, `e.AuthGetKey()`, `e.Chat()`, and `e.RunAgent()` — the host handles config, auth, LLM calls, and agent loops. No direct piglet imports needed.
 - **Prompt section ordering**: Lower `Order` = earlier in system prompt. Skills=25, memory=50, rtk=90.
 - **Interceptor priority**: Higher = runs first. Safeguard=2000 (security), RTK=100 (rewriting).
 - **Atomic file writes**: Memory store writes temp file then renames.

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/dotcommander/piglet-extensions/mcp"
-	sdk "github.com/dotcommander/piglet/sdk/go"
+	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 func main() {

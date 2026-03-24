@@ -14,31 +14,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dotcommander/piglet/config"
-	"github.com/dotcommander/piglet/ext"
 	"gopkg.in/yaml.v3"
 )
 
-// Register adds the safeguard interceptor to app.
-// enabled: nil/true = enabled; false = skip.
-func Register(app *ext.App, enabled *bool) {
-	if enabled != nil && !*enabled {
-		return
+// configDir returns the piglet config directory (~/.config/piglet).
+func configDir() (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
 	}
-
-	cfg := LoadConfig()
-	if cfg.Profile == ProfileOff {
-		return
-	}
-
-	compiled := CompilePatterns(cfg.Patterns)
-	audit := NewAuditLogger()
-
-	app.RegisterInterceptor(ext.Interceptor{
-		Name:     "safeguard",
-		Priority: 2000, // security — runs before everything else
-		Before:   BlockerWithConfig(cfg, compiled, "", audit),
-	})
+	return filepath.Join(base, "piglet"), nil
 }
 
 // CompilePatterns compiles string patterns into case-insensitive regexps.
@@ -53,12 +38,6 @@ func CompilePatterns(patterns []string) []*regexp.Regexp {
 		compiled = append(compiled, re)
 	}
 	return compiled
-}
-
-// Blocker returns a Before interceptor function that checks commands against patterns.
-// Retained for backward compatibility with compiled-in registration.
-func Blocker(patterns []*regexp.Regexp) func(ctx context.Context, toolName string, args map[string]any) (bool, map[string]any, error) {
-	return BlockerWithConfig(Config{Profile: ProfileBalanced}, patterns, "", nil)
 }
 
 // BlockerWithConfig returns a Before interceptor that enforces the given profile.
@@ -149,7 +128,7 @@ type auditEntry struct {
 
 // NewAuditLogger opens or creates the audit log file.
 func NewAuditLogger() *AuditLogger {
-	dir, err := config.ConfigDir()
+	dir, err := configDir()
 	if err != nil {
 		return nil
 	}
@@ -200,7 +179,7 @@ func LoadPatterns() []string {
 
 // LoadConfig reads the full safeguard configuration.
 func LoadConfig() Config {
-	dir, err := config.ConfigDir()
+	dir, err := configDir()
 	if err != nil {
 		return Config{Profile: ProfileBalanced, Patterns: defaultPatterns()}
 	}

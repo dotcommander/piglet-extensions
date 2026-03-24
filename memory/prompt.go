@@ -3,20 +3,9 @@ package memory
 import (
 	"fmt"
 	"strings"
-
-	"github.com/dotcommander/piglet/ext"
 )
 
 const promptContentCap = 8000
-
-func registerPromptSection(app *ext.App, store *Store) {
-	content := BuildMemoryPrompt(store)
-	app.RegisterPromptSection(ext.PromptSection{
-		Title:   "Project Memory",
-		Content: content,
-		Order:   50,
-	})
-}
 
 // BuildMemoryPrompt generates the prompt section content from memory store.
 func BuildMemoryPrompt(store *Store) string {
