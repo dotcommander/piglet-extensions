@@ -23,6 +23,21 @@ var (
 	builtMu sync.RWMutex
 )
 
+// repomapToolParams is shared between repomap_show and repomap_refresh tools.
+var repomapToolParams = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"verbose": map[string]any{
+			"type":        "boolean",
+			"description": "Show all symbols grouped by category (default: false)",
+		},
+		"detail": map[string]any{
+			"type":        "boolean",
+			"description": "Show all symbols with full signatures (default: false)",
+		},
+	},
+}
+
 func main() {
 	e := sdk.New("repomap", "0.1.0")
 
@@ -38,8 +53,8 @@ func main() {
 			setBuilt(true)
 			x.RegisterPromptSection(sdk.PromptSectionDef{
 				Title:   "Repository Map",
-				Content: rm.String(),
-				Order:   15,
+				Content: rm.StringLines(),
+				Order:   95, // late in prompt stack — volatile content goes after stable sections for cache efficiency
 			})
 			return
 		}
@@ -49,7 +64,7 @@ func main() {
 		x.RegisterPromptSection(sdk.PromptSectionDef{
 			Title:   "Repository Map",
 			Content: "",
-			Order:   15,
+			Order:   95,
 		})
 
 		go buildInBackground()
@@ -77,17 +92,9 @@ func main() {
 
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "repomap_refresh",
-		Description: "Force rebuild the repository map after major file changes. Use verbose=true to see all symbols.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"verbose": map[string]any{
-					"type":        "boolean",
-					"description": "Show all symbols without summarization (default: false)",
-				},
-			},
-		},
-		PromptHint: "Rebuild the repository map after major file changes (verbose for full details)",
+		Description: "Force rebuild the repository map after major file changes.",
+		Parameters:  repomapToolParams,
+		PromptHint: "Rebuild the repository map after major file changes",
 		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
 			if rm == nil {
 				return sdk.ErrorResult("repository map not initialized"), nil
@@ -96,38 +103,20 @@ func main() {
 				return sdk.ErrorResult("rebuild failed: " + err.Error()), nil
 			}
 			setBuilt(true)
-			verbose, _ := args["verbose"].(bool)
-			if verbose {
-				return sdk.TextResult(rm.StringVerbose()), nil
-			}
-			return sdk.TextResult(rm.String()), nil
+			return sdk.TextResult(formatOutput(args)), nil
 		},
 	})
 
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "repomap_show",
-		Description: "Show the current repository structure map. Use verbose=true to see all symbols without summarization.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"verbose": map[string]any{
-					"type":        "boolean",
-					"description": "Show all symbols without summarization (default: false)",
-				},
-			},
-		},
-		PromptHint: "Show the current repository structure map (verbose for full details)",
+		Description: "Show the current repository structure map with source code definitions.",
+		Parameters:  repomapToolParams,
+		PromptHint: "Show the current repository structure map (default: source lines, verbose/detail for alternatives)",
 		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
 			if rm == nil {
 				return sdk.TextResult("Repository map not initialized."), nil
 			}
-			verbose, _ := args["verbose"].(bool)
-			var out string
-			if verbose {
-				out = rm.StringVerbose()
-			} else {
-				out = rm.String()
-			}
+			out := formatOutput(args)
 			if out == "" {
 				if !isBuilt() {
 					return sdk.TextResult("Repository map is still building..."), nil
@@ -155,7 +144,7 @@ func buildInBackground() {
 	}
 
 	elapsed := time.Since(start).Round(time.Millisecond)
-	out := rm.String()
+	out := rm.StringLines()
 	if out == "" {
 		ext.Notify("⚠️ No source files found")
 		ext.Log("warn", "repomap produced empty output")
@@ -178,6 +167,21 @@ func isBuilt() bool {
 	builtMu.RLock()
 	defer builtMu.RUnlock()
 	return built
+}
+
+// formatOutput returns the repomap in the requested format.
+// Default is source lines; verbose/detail are explicit overrides.
+func formatOutput(args map[string]any) string {
+	verbose, _ := args["verbose"].(bool)
+	detail, _ := args["detail"].(bool)
+	switch {
+	case detail:
+		return rm.StringDetail()
+	case verbose:
+		return rm.StringVerbose()
+	default:
+		return rm.StringLines()
+	}
 }
 
 // pigletConfig mirrors the relevant subset of ~/.config/piglet/config.yaml.

@@ -33,13 +33,14 @@ func DefaultConfig() Config {
 
 // Map holds the built repository map state.
 type Map struct {
-	root    string
-	config  Config
-	mu      sync.RWMutex
-	ranked  []RankedFile
-	output  string
-	builtAt time.Time
-	mtimes  map[string]time.Time // path → mtime at last build
+	root        string
+	config      Config
+	mu          sync.RWMutex
+	ranked      []RankedFile
+	output      string
+	outputLines string
+	builtAt     time.Time
+	mtimes      map[string]time.Time // path → mtime at last build
 }
 
 // New creates a new Map for the given project root.
@@ -71,10 +72,12 @@ func (m *Map) Build(ctx context.Context) error {
 
 	ranked := RankFiles(parsed)
 	output := FormatMap(ranked, m.config.MaxTokens, false, false)
+	outputLines := FormatLines(ranked, m.config.MaxTokensNoCtx, m.root)
 
 	m.mu.Lock()
 	m.ranked = ranked
 	m.output = output
+	m.outputLines = outputLines
 	m.builtAt = time.Now()
 	m.mtimes = mtimes
 	m.mu.Unlock()
@@ -118,10 +121,7 @@ func (m *Map) StringDetail() string {
 func (m *Map) StringLines() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if len(m.ranked) == 0 {
-		return ""
-	}
-	return FormatLines(m.ranked, m.config.MaxTokensNoCtx, m.root)
+	return m.outputLines
 }
 
 // BuiltAt returns the time of the last successful build, or zero time if never built.

@@ -126,11 +126,7 @@ func formatFileBlockVerbose(f RankedFile) string {
 	var b strings.Builder
 	fmt.Fprint(&b, formatFileLine(f))
 
-	categorized := make(map[string][]Symbol)
-	for _, s := range f.Symbols {
-		cat := symbolCategory(f.Path, s)
-		categorized[cat] = append(categorized[cat], s)
-	}
+	categorized := categorizeByKind(f.Path, f.Symbols)
 
 	for _, item := range categoryOrder {
 		syms := categorized[item.key]
@@ -157,11 +153,7 @@ func formatFileBlockDetail(f RankedFile) string {
 	var b strings.Builder
 	fmt.Fprint(&b, formatFileLine(f))
 
-	categorized := make(map[string][]Symbol)
-	for _, s := range f.Symbols {
-		cat := symbolCategory(f.Path, s)
-		categorized[cat] = append(categorized[cat], s)
-	}
+	categorized := categorizeByKind(f.Path, f.Symbols)
 
 	for _, item := range categoryOrder {
 		syms := categorized[item.key]
@@ -230,11 +222,7 @@ type symbolGroup struct {
 }
 
 func summarizeSymbols(f RankedFile) []symbolGroup {
-	categorized := make(map[string][]Symbol)
-	for _, s := range f.Symbols {
-		cat := symbolCategory(f.Path, s)
-		categorized[cat] = append(categorized[cat], s)
-	}
+	categorized := categorizeByKind(f.Path, f.Symbols)
 
 	var groups []symbolGroup
 	for _, item := range categoryOrder {
@@ -276,6 +264,16 @@ func symbolCategory(path string, s Symbol) string {
 	default:
 		return "other"
 	}
+}
+
+// categorizeByKind groups symbols by their category key.
+func categorizeByKind(path string, syms []Symbol) map[string][]Symbol {
+	m := make(map[string][]Symbol)
+	for _, s := range syms {
+		cat := symbolCategory(path, s)
+		m[cat] = append(m[cat], s)
+	}
+	return m
 }
 
 func isTestSymbol(path string, s Symbol) bool {
@@ -507,6 +505,11 @@ func FormatLines(files []RankedFile, maxTokens int, root string) string {
 
 		if isTestFile(f.Path) {
 			continue
+		}
+
+		// Skip file read if we're clearly over budget (200 bytes = minimum useful block).
+		if shownFiles > 0 && budgetBytes > 0 && b.Len() > budgetBytes-200 {
+			break
 		}
 
 		block := formatFileBlockLines(f, root)
