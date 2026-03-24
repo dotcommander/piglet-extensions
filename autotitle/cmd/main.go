@@ -1,6 +1,3 @@
-// Autotitle extension binary. Generates session titles after first exchange.
-// Communicates with piglet host via JSON-RPC over stdin/stdout.
-// Uses the SDK host Chat method to generate titles without a direct provider dependency.
 package main
 
 import (
@@ -13,6 +10,8 @@ import (
 )
 
 const maxTitleRunes = 50
+
+const defaultPrompt = `You generate concise session titles. Given a user-assistant exchange, output a 2-5 word title. No quotes, no punctuation, just the title.`
 
 func main() {
 	e := sdk.New("autotitle", "0.1.0")
@@ -32,12 +31,15 @@ func main() {
 			// Lazy-load prompt on first fire (cannot call host during OnInit — deadlock)
 			p, _ := prompt.Load().(string)
 			if p == "" {
-				loaded, err := e.ConfigReadExtension(context.Background(), "autotitle")
-				if err != nil || loaded == "" {
-					return nil
+				loaded, _ := e.ConfigReadExtension(context.Background(), "autotitle")
+				if loaded != "" {
+					prompt.Store(loaded)
+					p = loaded
+				} else {
+					// Use default prompt if no user config
+					p = defaultPrompt
+					prompt.Store(p)
 				}
-				prompt.Store(loaded)
-				p = loaded
 			}
 
 			var evt struct {
