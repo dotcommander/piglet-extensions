@@ -52,7 +52,7 @@ This is a **public repository**. Every commit and tag is visible to the world. F
 |----------|---------|
 | API keys / secrets | `.env`, `auth.json`, tokens, passwords |
 | User config | `~/.config/piglet/config.yaml`, `models.yaml`, session files |
-| Local paths | `/Users/vampire/`, `~/www/`, absolute paths to user directories |
+| Local paths | `/Users/<name>/`, `~/www/`, absolute paths to user directories |
 | Scratch / work | `.work/`, `/tmp/` test scripts, journal notes |
 | Binary artifacts | Compiled extension binaries, `.so`, `.dylib` |
 
