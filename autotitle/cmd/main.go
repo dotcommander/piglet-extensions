@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -13,8 +15,6 @@ import (
 const maxTitleRunes = 50
 const chatTimeout = 10 * time.Second
 const chatModel = "small"
-
-const defaultPrompt = `You generate concise session titles. Given a user-assistant exchange, output a 2-5 word title. No quotes, no punctuation, just the title.`
 
 func main() {
 	e := sdk.New("autotitle", "0.1.0")
@@ -40,14 +40,14 @@ func main() {
 			p, _ := prompt.Load().(string)
 			if p == "" {
 				loaded, _ := e.ConfigReadExtension(context.Background(), "autotitle")
-				if loaded != "" {
-					prompt.Store(loaded)
-					p = loaded
-				} else {
-					// Use default prompt if no user config
-					p = defaultPrompt
-					prompt.Store(p)
+				if loaded == "" {
+					loaded = ensureDefaultConfig()
 				}
+				if loaded == "" {
+					return nil
+				}
+				prompt.Store(loaded)
+				p = loaded
 			}
 
 			var evt struct {
@@ -86,6 +86,29 @@ func main() {
 	})
 
 	e.Run()
+}
+
+func ensureDefaultConfig() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	p := filepath.Join(dir, "piglet", "autotitle.md")
+	data, err := os.ReadFile(p)
+	if err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	const defaultPrompt = "You generate concise session titles. Given a user-assistant exchange, output a 2-5 word title. No quotes, no punctuation, just the title."
+	// Atomic write: temp file then rename
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, []byte(defaultPrompt+"\n"), 0644); err != nil {
+		return defaultPrompt
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		os.Remove(tmp)
+		return defaultPrompt
+	}
+	return defaultPrompt
 }
 
 func extractFirstExchange(messages []json.RawMessage) (userText, assistantText string) {
