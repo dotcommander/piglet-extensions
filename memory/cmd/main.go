@@ -34,18 +34,9 @@ func main() {
 			Order:   50,
 		})
 
-		// Get compaction threshold from host config (0 = unset, use our default)
-		threshold := 50000
-		vals, err := x.ConfigGet(context.Background(), "agent.compactAt")
-		if err == nil {
-			if v, ok := vals["agent.compactAt"].(float64); ok && int(v) > 0 {
-				threshold = int(v)
-			}
-		}
-
 		x.RegisterCompactor(sdk.CompactorDef{
 			Name:      "rolling-memory",
-			Threshold: threshold,
+			Threshold: 50000,
 			Compact:   makeCompactHandler(x, s),
 		})
 	})

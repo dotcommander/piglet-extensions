@@ -18,58 +18,62 @@ func main() {
 	e := sdk.New("autotitle", "0.1.0")
 
 	var fired atomic.Bool
+	var prompt atomic.Value // lazy-loaded from config on first event
 
-	e.OnInit(func(_ *sdk.Extension) {
-		prompt, err := e.ConfigReadExtension(context.Background(), "autotitle")
-		if err != nil || prompt == "" {
-			// No prompt file — run as no-op
-			return
-		}
-
-		e.RegisterEventHandler(sdk.EventHandlerDef{
-			Name:     "autotitle",
-			Priority: 100,
-			Events:   []string{"EventAgentEnd"},
-			Handle: func(_ context.Context, _ string, data json.RawMessage) *sdk.Action {
-				if !fired.CompareAndSwap(false, true) {
-					return nil
-				}
-
-				var evt struct {
-					Messages []json.RawMessage `json:"Messages"`
-				}
-				if err := json.Unmarshal(data, &evt); err != nil || len(evt.Messages) < 2 {
-					fired.Store(false)
-					return nil
-				}
-
-				userText, assistantText := extractFirstExchange(evt.Messages)
-				if userText == "" {
-					fired.Store(false)
-					return nil
-				}
-
-				content := "User: " + truncate(userText, 200) + "\n\nAssistant: " + truncate(assistantText, 200)
-
-				resp, err := e.Chat(context.Background(), sdk.ChatRequest{
-					System:    prompt,
-					Messages:  []sdk.ChatMessage{{Role: "user", Content: content}},
-					Model:     "small",
-					MaxTokens: 30,
-				})
-				if err != nil || resp.Text == "" {
-					fired.Store(false)
-					return nil
-				}
-
-				title := strings.TrimSpace(resp.Text)
-				title = truncate(title, maxTitleRunes)
-				if title != "" {
-					return sdk.ActionSetSessionTitle(title)
-				}
+	e.RegisterEventHandler(sdk.EventHandlerDef{
+		Name:     "autotitle",
+		Priority: 100,
+		Events:   []string{"EventAgentEnd"},
+		Handle: func(_ context.Context, _ string, data json.RawMessage) *sdk.Action {
+			if !fired.CompareAndSwap(false, true) {
 				return nil
-			},
-		})
+			}
+
+			// Lazy-load prompt on first fire (cannot call host during OnInit — deadlock)
+			p, _ := prompt.Load().(string)
+			if p == "" {
+				loaded, err := e.ConfigReadExtension(context.Background(), "autotitle")
+				if err != nil || loaded == "" {
+					return nil
+				}
+				prompt.Store(loaded)
+				p = loaded
+			}
+
+			var evt struct {
+				Messages []json.RawMessage `json:"Messages"`
+			}
+			if err := json.Unmarshal(data, &evt); err != nil || len(evt.Messages) < 2 {
+				fired.Store(false)
+				return nil
+			}
+
+			userText, assistantText := extractFirstExchange(evt.Messages)
+			if userText == "" {
+				fired.Store(false)
+				return nil
+			}
+
+			content := "User: " + truncate(userText, 200) + "\n\nAssistant: " + truncate(assistantText, 200)
+
+			resp, err := e.Chat(context.Background(), sdk.ChatRequest{
+				System:    p,
+				Messages:  []sdk.ChatMessage{{Role: "user", Content: content}},
+				Model:     "small",
+				MaxTokens: 30,
+			})
+			if err != nil || resp.Text == "" {
+				fired.Store(false)
+				return nil
+			}
+
+			title := strings.TrimSpace(resp.Text)
+			title = truncate(title, maxTitleRunes)
+			if title != "" {
+				return sdk.ActionSetSessionTitle(title)
+			}
+			return nil
+		},
 	})
 
 	e.Run()

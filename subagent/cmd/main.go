@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	sdk "github.com/dotcommander/piglet/sdk"
 )
@@ -14,12 +15,8 @@ import (
 func main() {
 	ext := sdk.New("subagent", "0.1.0")
 
+	var promptOnce sync.Once
 	var prompt string
-
-	ext.OnInit(func(e *sdk.Extension) {
-		p, _ := e.ConfigReadExtension(context.Background(), "subagent")
-		prompt = p
-	})
 
 	ext.RegisterTool(sdk.ToolDef{
 		Name:        "dispatch",
@@ -38,6 +35,11 @@ func main() {
 		},
 		PromptHint: "Delegate focused tasks to independent sub-agents for research, analysis, or exploration",
 		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			// Lazy-load prompt (cannot call host during OnInit — deadlock)
+			promptOnce.Do(func() {
+				prompt, _ = ext.ConfigReadExtension(ctx, "subagent")
+			})
+
 			task, _ := args["task"].(string)
 			if task == "" {
 				return sdk.ErrorResult("task is required"), nil
