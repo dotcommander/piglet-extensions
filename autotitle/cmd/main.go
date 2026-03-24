@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 const maxTitleRunes = 50
+const chatTimeout = 10 * time.Second
+const chatModel = "small"
 
 const defaultPrompt = `You generate concise session titles. Given a user-assistant exchange, output a 2-5 word title. No quotes, no punctuation, just the title.`
 
@@ -23,10 +26,15 @@ func main() {
 		Name:     "autotitle",
 		Priority: 100,
 		Events:   []string{"EventAgentEnd"},
-		Handle: func(_ context.Context, _ string, data json.RawMessage) *sdk.Action {
+		Handle: func(_ context.Context, _ string, data json.RawMessage) (result *sdk.Action) {
 			if !fired.CompareAndSwap(false, true) {
 				return nil
 			}
+			defer func() {
+				if result == nil {
+					fired.Store(false)
+				}
+			}()
 
 			// Lazy-load prompt on first fire (cannot call host during OnInit — deadlock)
 			p, _ := prompt.Load().(string)
@@ -46,26 +54,25 @@ func main() {
 				Messages []json.RawMessage `json:"Messages"`
 			}
 			if err := json.Unmarshal(data, &evt); err != nil || len(evt.Messages) < 2 {
-				fired.Store(false)
 				return nil
 			}
 
 			userText, assistantText := extractFirstExchange(evt.Messages)
 			if userText == "" {
-				fired.Store(false)
 				return nil
 			}
 
 			content := "User: " + truncate(userText, 200) + "\n\nAssistant: " + truncate(assistantText, 200)
 
-			resp, err := e.Chat(context.Background(), sdk.ChatRequest{
+			ctx, cancel := context.WithTimeout(context.Background(), chatTimeout)
+			defer cancel()
+			resp, err := e.Chat(ctx, sdk.ChatRequest{
 				System:    p,
 				Messages:  []sdk.ChatMessage{{Role: "user", Content: content}},
-				Model:     "small",
+				Model:     chatModel,
 				MaxTokens: 30,
 			})
 			if err != nil || resp.Text == "" {
-				fired.Store(false)
 				return nil
 			}
 
