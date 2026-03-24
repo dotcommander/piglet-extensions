@@ -36,14 +36,21 @@ const maxFileSize = 50_000
 
 // skipDirs holds directory names to skip during filesystem walk.
 var skipDirs = map[string]bool{
-	".git":        true,
-	"vendor":      true,
+	".git":         true,
+	"vendor":       true,
 	"node_modules": true,
-	"__pycache__": true,
-	".venv":       true,
-	"build":       true,
-	"dist":        true,
-	"target":      true,
+	"__pycache__":  true,
+	".venv":        true,
+	"build":        true,
+	"dist":         true,
+	"target":       true,
+	"_app":         true, // SvelteKit build output
+	".svelte-kit":  true,
+	".next":        true, // Next.js build output
+	".nuxt":        true, // Nuxt build output
+	".output":      true, // Nitro/Nuxt output
+	"out":          true, // common build output
+	"coverage":     true,
 }
 
 // FileInfo holds a discovered file with its language.
@@ -93,13 +100,17 @@ func scanGit(ctx context.Context, root string) ([]FileInfo, error) {
 			continue
 		}
 
+		if inSkipDir(line) {
+			continue
+		}
+
 		lang := LanguageFor(filepath.Ext(line))
 		if lang == "" {
 			continue
 		}
 
 		absPath := filepath.Join(root, line)
-		if tooBig(absPath) {
+		if tooBig(absPath) || isMinified(line) {
 			continue
 		}
 
@@ -133,7 +144,7 @@ func scanWalk(ctx context.Context, root string) ([]FileInfo, error) {
 			return nil
 		}
 
-		if tooBig(path) {
+		if tooBig(path) || isMinified(path) {
 			return nil
 		}
 
@@ -149,10 +160,28 @@ func scanWalk(ctx context.Context, root string) ([]FileInfo, error) {
 	return files, err
 }
 
+// inSkipDir reports whether path has any component in skipDirs.
+func inSkipDir(path string) bool {
+	for _, part := range strings.Split(filepath.Dir(path), string(filepath.Separator)) {
+		if skipDirs[part] {
+			return true
+		}
+	}
+	return false
+}
+
 func tooBig(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
 		return true
 	}
 	return info.Size() > maxFileSize
+}
+
+// isMinified returns true for files that are likely minified/bundled output.
+func isMinified(path string) bool {
+	base := filepath.Base(path)
+	return strings.HasSuffix(base, ".min.js") ||
+		strings.HasSuffix(base, ".min.css") ||
+		strings.HasSuffix(base, ".bundle.js")
 }
