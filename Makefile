@@ -20,4 +20,5 @@ clean:
 	@for ext in $(EXTENSION_NAMES); do \
 		rm -rf $(EXTENSIONS_DIR)/$$ext; \
 	done
+	@rm -f cmd
 	@echo "Extensions removed from $(EXTENSIONS_DIR)"
