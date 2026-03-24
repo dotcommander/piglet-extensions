@@ -35,7 +35,7 @@ func main() {
 		})
 
 		// Get compaction threshold from host config
-		threshold := 0
+		threshold := 50000
 		vals, err := x.ConfigGet(context.Background(), "agent.compactAt")
 		if err == nil {
 			if v, ok := vals["agent.compactAt"].(float64); ok {
