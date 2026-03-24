@@ -36,7 +36,7 @@ Declared in `cmd/manifest.yaml`:
 ### Key Patterns
 
 - **OnInit for CWD-dependent state**: External binaries use `ext.OnInit(func(e *sdk.Extension) { ... })` to initialize after the host sends CWD. See `safeguard/cmd/main.go` and `memory/cmd/main.go`.
-- **Config from `~/.config/piglet/`**: Read via `e.ConfigReadExtension()` (host protocol) or `os.UserConfigDir()`. Never hardcode behavioral content in Go source.
+- **No hardcoded strings (BLOCKING)**: Prompts, defaults, templates, and behavioral content must never live in Go source. If the config file is missing, create it with defaults via atomic write (`WriteFile` tmp + `Rename`), then read it back. Go code reads config; it does not contain config.
 - **Host protocol methods (v3)**: Extensions can call `e.ConfigGet()`, `e.ConfigReadExtension()`, `e.AuthGetKey()`, `e.Chat()`, and `e.RunAgent()` — the host handles config, auth, LLM calls, and agent loops. No direct piglet imports needed.
 - **Prompt section ordering**: Lower `Order` = earlier in system prompt. Skills=25, memory=50, rtk=90.
 - **Interceptor priority**: Higher = runs first. Safeguard=2000 (security), RTK=100 (rewriting).
