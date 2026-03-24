@@ -59,6 +59,19 @@ var (
 
 var rubyDecl = regexp.MustCompile(`^(?:def|class|module)\s+(\w+)`)
 
+// --- PHP patterns ---
+
+var (
+	phpClass     = regexp.MustCompile(`^(?:abstract\s+|final\s+)?class\s+(\w+)`)
+	phpInterface = regexp.MustCompile(`^interface\s+(\w+)`)
+	phpTrait     = regexp.MustCompile(`^trait\s+(\w+)`)
+	phpEnum      = regexp.MustCompile(`^enum\s+(\w+)`)
+	phpFunction  = regexp.MustCompile(`^(?:public\s+|protected\s+|private\s+)?(?:static\s+)?function\s+(\w+)`)
+	phpConst     = regexp.MustCompile(`^(?:public\s+|protected\s+|private\s+)?const\s+(\w+)`)
+	phpUse       = regexp.MustCompile(`^use\s+([^;{]+)`)
+	phpNamespace = regexp.MustCompile(`^namespace\s+([^;]+)`)
+)
+
 // ParseGenericFile extracts symbols from a non-Go source file using regex
 // patterns. path is absolute, root is the project root for relative path
 // calculation.
@@ -96,6 +109,8 @@ func ParseGenericFile(path, root, language string) (*FileSymbols, error) {
 		parseJava(lines, fs)
 	case "ruby":
 		parseRuby(lines, fs)
+	case "php":
+		parsePHP(lines, fs)
 	// swift, kotlin, lua, zig — unsupported, return empty
 	}
 
@@ -104,20 +119,20 @@ func ParseGenericFile(path, root, language string) (*FileSymbols, error) {
 
 // parseTS processes TypeScript/JavaScript lines.
 func parseTS(lines []string, fs *FileSymbols) {
-	for _, line := range lines {
+	for lineIdx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
 		if m := tsExportDecl.FindStringSubmatch(trimmed); m != nil {
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[2], Kind: m[1]})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[2], Kind: m[1], Line: lineIdx + 1})
 			continue
 		}
 		if m := tsExportDefault.FindStringSubmatch(trimmed); m != nil {
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[2], Kind: m[1]})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[2], Kind: m[1], Line: lineIdx + 1})
 			continue
 		}
 		if m := tsReExport.FindStringSubmatch(trimmed); m != nil {
 			for _, name := range splitReExportNames(m[1]) {
-				fs.Symbols = append(fs.Symbols, Symbol{Name: name, Kind: "reexport"})
+				fs.Symbols = append(fs.Symbols, Symbol{Name: name, Kind: "reexport", Line: lineIdx + 1})
 			}
 			continue
 		}
@@ -156,7 +171,7 @@ func parsePython(lines []string, fs *FileSymbols) {
 	inDocstring := false
 	docQuote := ""
 
-	for _, line := range lines {
+	for lineIdx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
 		// Track triple-quoted strings used as block comments / docstrings.
@@ -181,15 +196,15 @@ func parsePython(lines []string, fs *FileSymbols) {
 		}
 
 		if m := pyFunc.FindStringSubmatch(line); m != nil {
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "function"})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "function", Line: lineIdx + 1})
 			continue
 		}
 		if m := pyClass.FindStringSubmatch(line); m != nil {
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "class"})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "class", Line: lineIdx + 1})
 			continue
 		}
 		if m := pyConst.FindStringSubmatch(line); m != nil {
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "const"})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "const", Line: lineIdx + 1})
 			continue
 		}
 		if m := pyImport.FindStringSubmatch(line); m != nil {
@@ -206,7 +221,7 @@ func parsePython(lines []string, fs *FileSymbols) {
 func parseRust(lines []string, fs *FileSymbols) {
 	inBlockComment := false
 
-	for _, line := range lines {
+	for lineIdx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
 		inBlockComment = trackBlockComment(trimmed, inBlockComment)
@@ -215,15 +230,15 @@ func parseRust(lines []string, fs *FileSymbols) {
 		}
 
 		if m := rustPubAsync.FindStringSubmatch(trimmed); m != nil {
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "fn"})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "fn", Line: lineIdx + 1})
 			continue
 		}
 		if m := rustPubItem.FindStringSubmatch(trimmed); m != nil {
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[2], Kind: m[1]})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[2], Kind: m[1], Line: lineIdx + 1})
 			continue
 		}
 		if m := rustImpl.FindStringSubmatch(trimmed); m != nil {
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "impl"})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "impl", Line: lineIdx + 1})
 			continue
 		}
 		if m := rustUse.FindStringSubmatch(trimmed); m != nil {
@@ -236,7 +251,7 @@ func parseRust(lines []string, fs *FileSymbols) {
 func parseC(lines []string, fs *FileSymbols) {
 	inBlockComment := false
 
-	for _, line := range lines {
+	for lineIdx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
 		inBlockComment = trackBlockComment(trimmed, inBlockComment)
@@ -254,7 +269,7 @@ func parseC(lines []string, fs *FileSymbols) {
 
 		if m := cTagDecl.FindStringSubmatch(trimmed); m != nil {
 			kind := strings.Fields(trimmed)[0] // struct / class / enum / typedef
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: kind})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: kind, Line: lineIdx + 1})
 			continue
 		}
 
@@ -262,7 +277,7 @@ func parseC(lines []string, fs *FileSymbols) {
 		// and contain a '('.
 		if line == trimmed && strings.Contains(line, "(") {
 			if m := cFunc.FindStringSubmatch(trimmed); m != nil {
-				fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "function"})
+				fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "function", Line: lineIdx + 1})
 			}
 		}
 	}
@@ -272,7 +287,7 @@ func parseC(lines []string, fs *FileSymbols) {
 func parseJava(lines []string, fs *FileSymbols) {
 	inBlockComment := false
 
-	for _, line := range lines {
+	for lineIdx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
 		inBlockComment = trackBlockComment(trimmed, inBlockComment)
@@ -293,25 +308,89 @@ func parseJava(lines []string, fs *FileSymbols) {
 					break
 				}
 			}
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: kind})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: kind, Line: lineIdx + 1})
 			continue
 		}
 		if m := javaMethodDecl.FindStringSubmatch(trimmed); m != nil {
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "method"})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "method", Line: lineIdx + 1})
+		}
+	}
+}
+
+// parsePHP processes PHP lines.
+func parsePHP(lines []string, fs *FileSymbols) {
+	inBlockComment := false
+
+	for lineIdx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "<?php" || trimmed == "?>" || trimmed == "<?" {
+			continue
+		}
+
+		inBlockComment = trackBlockComment(trimmed, inBlockComment)
+		if inBlockComment {
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		if m := phpNamespace.FindStringSubmatch(trimmed); m != nil {
+			fs.Package = strings.TrimSpace(m[1])
+			continue
+		}
+		if m := phpUse.FindStringSubmatch(trimmed); m != nil {
+			fs.Imports = append(fs.Imports, strings.TrimSpace(m[1]))
+			continue
+		}
+		if m := phpClass.FindStringSubmatch(trimmed); m != nil {
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "class", Exported: true, Line: lineIdx + 1})
+			continue
+		}
+		if m := phpInterface.FindStringSubmatch(trimmed); m != nil {
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "interface", Exported: true, Line: lineIdx + 1})
+			continue
+		}
+		if m := phpTrait.FindStringSubmatch(trimmed); m != nil {
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "trait", Exported: true, Line: lineIdx + 1})
+			continue
+		}
+		if m := phpEnum.FindStringSubmatch(trimmed); m != nil {
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "enum", Exported: true, Line: lineIdx + 1})
+			continue
+		}
+		if m := phpFunction.FindStringSubmatch(trimmed); m != nil {
+			// Skip magic methods and constructors
+			if strings.HasPrefix(m[1], "__") {
+				continue
+			}
+			kind := "function"
+			// If indented (inside a class), treat as method
+			if len(line) > len(trimmed) {
+				kind = "method"
+			}
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: kind, Exported: true, Line: lineIdx + 1})
+			continue
+		}
+		if m := phpConst.FindStringSubmatch(trimmed); m != nil {
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: "constant", Exported: true, Line: lineIdx + 1})
+			continue
 		}
 	}
 }
 
 // parseRuby processes Ruby lines.
 func parseRuby(lines []string, fs *FileSymbols) {
-	for _, line := range lines {
+	for lineIdx, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 		if m := rubyDecl.FindStringSubmatch(trimmed); m != nil {
 			kind := strings.Fields(trimmed)[0] // def / class / module
-			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: kind})
+			fs.Symbols = append(fs.Symbols, Symbol{Name: m[1], Kind: kind, Line: lineIdx + 1})
 		}
 	}
 }

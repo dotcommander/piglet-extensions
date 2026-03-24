@@ -42,11 +42,11 @@ func ParseGoFile(path, root string) (*FileSymbols, error) {
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
-			if sym, ok := extractFunc(d); ok {
+			if sym, ok := extractFunc(fset, d); ok {
 				fs.Symbols = append(fs.Symbols, sym)
 			}
 		case *ast.GenDecl:
-			syms := extractGenDecl(d)
+			syms := extractGenDecl(fset, d)
 			fs.Symbols = append(fs.Symbols, syms...)
 		}
 	}
@@ -149,7 +149,7 @@ func parseModuleName(content string) string {
 
 // extractFunc extracts a Symbol from a function or method declaration.
 // Returns (Symbol, false) if the function is unexported.
-func extractFunc(d *ast.FuncDecl) (Symbol, bool) {
+func extractFunc(fset *token.FileSet, d *ast.FuncDecl) (Symbol, bool) {
 	if !isExported(d.Name.Name) {
 		return Symbol{}, false
 	}
@@ -158,6 +158,7 @@ func extractFunc(d *ast.FuncDecl) (Symbol, bool) {
 		Name:     d.Name.Name,
 		Kind:     "function",
 		Exported: true,
+		Line:     fset.Position(d.Name.Pos()).Line,
 	}
 
 	if d.Recv != nil && len(d.Recv.List) > 0 {
@@ -368,7 +369,7 @@ func interfaceMethods(it *ast.InterfaceType) string {
 }
 
 // extractGenDecl extracts symbols from a general declaration (type, const, var).
-func extractGenDecl(d *ast.GenDecl) []Symbol {
+func extractGenDecl(fset *token.FileSet, d *ast.GenDecl) []Symbol {
 	var syms []Symbol
 	switch d.Tok {
 	case token.TYPE:
@@ -387,7 +388,7 @@ func extractGenDecl(d *ast.GenDecl) []Symbol {
 				kind = "interface"
 				signature = interfaceMethods(t)
 			}
-			syms = append(syms, Symbol{Name: ts.Name.Name, Kind: kind, Exported: true, Signature: signature})
+			syms = append(syms, Symbol{Name: ts.Name.Name, Kind: kind, Exported: true, Signature: signature, Line: fset.Position(ts.Name.Pos()).Line})
 		}
 	case token.CONST:
 		for _, spec := range d.Specs {
@@ -397,7 +398,7 @@ func extractGenDecl(d *ast.GenDecl) []Symbol {
 			}
 			for _, name := range vs.Names {
 				if isExported(name.Name) {
-					syms = append(syms, Symbol{Name: name.Name, Kind: "constant", Exported: true})
+					syms = append(syms, Symbol{Name: name.Name, Kind: "constant", Exported: true, Line: fset.Position(name.Pos()).Line})
 				}
 			}
 		}
@@ -409,7 +410,7 @@ func extractGenDecl(d *ast.GenDecl) []Symbol {
 			}
 			for _, name := range vs.Names {
 				if isExported(name.Name) {
-					syms = append(syms, Symbol{Name: name.Name, Kind: "variable", Exported: true})
+					syms = append(syms, Symbol{Name: name.Name, Kind: "variable", Exported: true, Line: fset.Position(name.Pos()).Line})
 				}
 			}
 		}

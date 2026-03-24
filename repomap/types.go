@@ -7,6 +7,7 @@ type Symbol struct {
 	Signature string // e.g. "(ctx, provider, opts) *Agent" — params + return, no func keyword
 	Receiver  string // e.g. "*Agent" — methods only, empty for functions
 	Exported  bool   // true if the symbol is exported (uppercase first letter)
+	Line      int    // 1-based source line number (0 = unknown)
 }
 
 // FileSymbols holds all symbols extracted from a single source file.

@@ -43,6 +43,7 @@ type ctagsEntry struct {
 	ScopeKind string `json:"scopeKind"`
 	Signature string `json:"signature"`
 	Language  string `json:"language"`
+	Line      int    `json:"line"`
 }
 
 // ParseWithCtags runs ctags once over all files and returns FileSymbols for
@@ -138,6 +139,7 @@ func ParseWithCtags(ctx context.Context, root string, files []FileInfo) ([]*File
 			Kind:      kind,
 			Signature: e.Signature,
 			Exported:  isExportedForLang(e.Name, info.Language),
+			Line:      e.Line,
 		}
 
 		symbolsByPath[absPath] = append(symbolsByPath[absPath], sym)

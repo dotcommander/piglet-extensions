@@ -112,6 +112,18 @@ func (m *Map) StringDetail() string {
 	return FormatMap(m.ranked, 0, true, true) // verbose=true, detail=true
 }
 
+// StringLines returns the source-line format showing actual code definitions.
+// More concise than verbose mode, more useful than compact mode.
+// Returns empty string if Build has not been called or produced no symbols.
+func (m *Map) StringLines() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.ranked) == 0 {
+		return ""
+	}
+	return FormatLines(m.ranked, m.config.MaxTokensNoCtx, m.root)
+}
+
 // BuiltAt returns the time of the last successful build, or zero time if never built.
 func (m *Map) BuiltAt() time.Time {
 	m.mu.RLock()

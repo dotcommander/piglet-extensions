@@ -30,6 +30,7 @@ var supportedExts = map[string]string{
 	".rb":   "ruby",
 	".swift": "swift",
 	".kt":   "kotlin",
+	".php":  "php",
 }
 
 const maxFileSize = 50_000
