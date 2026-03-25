@@ -6,10 +6,17 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 
 	sdk "github.com/dotcommander/piglet/sdk"
+)
+
+const (
+	envDepth    = "PIGLET_SUBAGENT_DEPTH"
+	defaultMax  = 2
 )
 
 func main() {
@@ -44,6 +51,24 @@ func main() {
 			if task == "" {
 				return sdk.ErrorResult("task is required"), nil
 			}
+
+			// Depth guard: prevent runaway nesting
+			depth := 0
+			if d, err := strconv.Atoi(os.Getenv(envDepth)); err == nil && d > 0 {
+				depth = d
+			}
+			maxDepth := defaultMax
+			if m, err := strconv.Atoi(os.Getenv("PIGLET_SUBAGENT_MAX_DEPTH")); err == nil && m > 0 {
+				maxDepth = m
+			}
+			if depth >= maxDepth {
+				return sdk.ErrorResult(fmt.Sprintf("subagent nesting limit reached (depth %d >= max %d). Decompose the task or increase PIGLET_SUBAGENT_MAX_DEPTH", depth, maxDepth)), nil
+			}
+
+			// Propagate depth+1 to child via env (restored after call)
+			prevDepth := os.Getenv(envDepth)
+			os.Setenv(envDepth, strconv.Itoa(depth+1))
+			defer os.Setenv(envDepth, prevDepth)
 
 			system := prompt
 			if extra, _ := args["context"].(string); extra != "" {

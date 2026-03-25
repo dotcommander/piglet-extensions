@@ -19,6 +19,20 @@ Delegates tasks to independent sub-agents that run to completion with their own 
 | `model` | string | no | Model override (e.g., `anthropic/claude-haiku-4-5`) |
 | `prefer` | enum | no | `default` or `small` model preference |
 
+## Depth Guard
+
+Subagents are protected against runaway nesting. By default, nesting is limited to **2 levels** (main → subagent → sub-subagent). Deeper calls are blocked with an error.
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `PIGLET_SUBAGENT_MAX_DEPTH` | 2 | Maximum nesting depth |
+| `PIGLET_SUBAGENT_DEPTH` | (internal) | Current depth, auto-propagated |
+
+To allow deeper nesting (use with caution):
+```bash
+export PIGLET_SUBAGENT_MAX_DEPTH=3
+```
+
 ## How It Works
 
 1. Resolves LLM provider from auth config (respects `prefer` for model selection)
