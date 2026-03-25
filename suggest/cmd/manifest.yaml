@@ -1,0 +1,5 @@
+name: suggest
+version: 0.1.0
+runtime: ./suggest
+capabilities:
+  - eventHandlers
