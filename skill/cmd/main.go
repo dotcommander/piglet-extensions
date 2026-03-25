@@ -5,10 +5,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet-extensions/skill"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
@@ -19,12 +19,11 @@ func main() {
 	e := sdk.New("skill", "0.1.0")
 
 	e.OnInit(func(_ *sdk.Extension) {
-		base, err := os.UserConfigDir()
+		base, err := xdg.ConfigDir()
 		if err != nil {
 			return
 		}
-		dir := filepath.Join(base, "piglet")
-		store = skill.NewStore(filepath.Join(dir, "skills"))
+		store = skill.NewStore(filepath.Join(base, "skills"))
 		if len(store.List()) == 0 {
 			store = nil
 			return

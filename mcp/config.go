@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,12 +29,12 @@ type Config struct {
 // LoadConfig reads MCP server configuration from ~/.config/piglet/mcp.yaml.
 // Returns nil servers if the file doesn't exist or is empty.
 func LoadConfig() *Config {
-	dir, err := os.UserConfigDir()
+	dir, err := xdg.ConfigDir()
 	if err != nil {
 		return &Config{}
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, "piglet", "mcp.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, "mcp.yaml"))
 	if err != nil {
 		return &Config{}
 	}

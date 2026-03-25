@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
@@ -89,11 +90,11 @@ func main() {
 }
 
 func ensureDefaultConfig() string {
-	dir, err := os.UserConfigDir()
+	dir, err := xdg.ConfigDir()
 	if err != nil {
 		return ""
 	}
-	p := filepath.Join(dir, "piglet", "autotitle.md")
+	p := filepath.Join(dir, "autotitle.md")
 	data, err := os.ReadFile(p)
 	if err == nil {
 		return strings.TrimSpace(string(data))

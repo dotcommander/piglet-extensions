@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,14 +19,14 @@ type Store struct {
 }
 
 func NewStore(cwd string) (*Store, error) {
-	base, err := os.UserConfigDir()
+	base, err := xdg.ConfigDir()
 	if err != nil {
 		return nil, fmt.Errorf("plan: user config dir: %w", err)
 	}
 
 	sum := sha256.Sum256([]byte(cwd))
 	hash := hex.EncodeToString(sum[:])[:12]
-	dir := filepath.Join(base, "piglet", "plans", hash)
+	dir := filepath.Join(base, "plans", hash)
 
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("plan: mkdir: %w", err)

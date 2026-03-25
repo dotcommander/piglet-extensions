@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet-extensions/pipeline"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
@@ -23,11 +24,11 @@ func main() {
 	var configDir string
 
 	e.OnInit(func(ext *sdk.Extension) {
-		home, err := os.UserConfigDir()
+		home, err := xdg.ConfigDir()
 		if err != nil {
 			return
 		}
-		configDir = filepath.Join(home, "piglet")
+		configDir = home
 
 		// Load prompt from config
 		promptPath := filepath.Join(configDir, "pipeline", "prompt.md")

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 )
 
 // Fact is a single key/value memory entry with optional category.
@@ -132,7 +134,7 @@ func (s *Store) Clear() error {
 
 // storePath returns the JSONL path for the given cwd.
 func storePath(cwd string) (string, error) {
-	base, err := os.UserConfigDir()
+	base, err := xdg.ConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("memory: user config dir: %w", err)
 	}
@@ -140,7 +142,7 @@ func storePath(cwd string) (string, error) {
 	sum := sha256.Sum256([]byte(cwd))
 	name := hex.EncodeToString(sum[:])[:12] + ".jsonl"
 
-	return filepath.Join(base, "piglet", "memory", name), nil
+	return filepath.Join(base, "memory", name), nil
 }
 
 // load reads the JSONL file into s.data. Missing file is not an error.

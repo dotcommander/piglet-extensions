@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet-extensions/repomap"
 	sdk "github.com/dotcommander/piglet/sdk"
 	"gopkg.in/yaml.v3"
@@ -197,12 +198,12 @@ type pigletConfig struct {
 func loadConfig() repomap.Config {
 	cfg := repomap.DefaultConfig()
 
-	configDir, err := os.UserConfigDir()
+	configDir, err := xdg.ConfigDir()
 	if err != nil {
 		return cfg
 	}
 
-	data, err := os.ReadFile(filepath.Join(configDir, "piglet", "config.yaml"))
+	data, err := os.ReadFile(filepath.Join(configDir, "config.yaml"))
 	if err != nil {
 		return cfg
 	}

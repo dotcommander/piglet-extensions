@@ -14,16 +14,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"gopkg.in/yaml.v3"
 )
 
 // configDir returns the piglet config directory (~/.config/piglet).
 func configDir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(base, "piglet"), nil
+	return xdg.ConfigDir()
 }
 
 // CompilePatterns compiles string patterns into case-insensitive regexps.

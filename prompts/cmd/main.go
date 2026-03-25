@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 	"gopkg.in/yaml.v3"
 )
@@ -21,9 +22,9 @@ func main() {
 		prompts := make(map[string]promptEntry)
 
 		// Global prompts (lower priority)
-		cfgDir, _ := os.UserConfigDir()
+		cfgDir, _ := xdg.ConfigDir()
 		if cfgDir != "" {
-			loadPromptDir(filepath.Join(cfgDir, "piglet", "prompts"), prompts)
+			loadPromptDir(filepath.Join(cfgDir, "prompts"), prompts)
 		}
 
 		// Project-local prompts (higher priority — overwrites global on collision)

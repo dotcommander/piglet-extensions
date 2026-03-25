@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
@@ -23,12 +24,11 @@ func main() {
 				return nil
 			}
 
-			dir, err := os.UserConfigDir()
+			dir, err := xdg.ConfigDir()
 			if err != nil {
 				e.ShowMessage("Cannot determine config dir: " + err.Error())
 				return nil
 			}
-			dir = filepath.Join(dir, "piglet")
 
 			var b strings.Builder
 			b.WriteString("Config directory: " + dir + "\n")
