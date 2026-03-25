@@ -1,0 +1,7 @@
+name: pipeline
+version: 0.1.0
+runtime: ./pipeline
+capabilities:
+  - tools
+  - commands
+  - prompt
