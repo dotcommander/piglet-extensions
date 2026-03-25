@@ -1,0 +1,5 @@
+name: behavior
+version: 0.1.0
+runtime: ./behavior
+capabilities:
+  - promptSections

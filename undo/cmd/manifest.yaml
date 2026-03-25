@@ -1,0 +1,5 @@
+name: undo
+version: 0.1.0
+runtime: ./undo
+capabilities:
+  - commands

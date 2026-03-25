@@ -1,0 +1,5 @@
+name: export
+version: 0.1.0
+runtime: ./export
+capabilities:
+  - commands
