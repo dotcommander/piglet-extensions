@@ -1,6 +1,6 @@
 EXTENSIONS_DIR := $(HOME)/.config/piglet/extensions
 
-EXTENSION_NAMES := safeguard rtk autotitle clipboard skill memory subagent lsp repomap plan bulk mcp usage gitcontext prompts behavior export admin scaffold undo session-tools background extensions-list pipeline webfetch loop inbox
+EXTENSION_NAMES := safeguard rtk autotitle clipboard skill memory subagent lsp repomap plan bulk modelsdev mcp usage gitcontext prompts behavior export admin scaffold undo session-tools background extensions-list pipeline webfetch loop inbox
 
 .PHONY: extensions clean $(addprefix extensions-,$(EXTENSION_NAMES))
 
