@@ -1,0 +1,6 @@
+name: inbox
+version: 0.1.0
+runtime: ./inbox
+capabilities:
+  - tools
+  - eventHandlers
