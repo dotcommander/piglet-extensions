@@ -11,18 +11,26 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
-var store *plan.Store
+var (
+	store    *plan.Store
+	git      *plan.GitClient
+	cwd      string
+)
 
 func main() {
 	e := sdk.New("plan", "0.1.0")
 
 	e.OnInit(func(x *sdk.Extension) {
-		s, err := plan.NewStore(x.CWD())
+		cwd = x.CWD()
+		s, err := plan.NewStore(cwd)
 		if err != nil {
 			x.Notify(fmt.Sprintf("plan: init failed: %v", err))
 			return
 		}
 		store = s
+
+		// Initialize git client for checkpoint commits
+		git = plan.NewGitClient(cwd)
 
 		active, _ := s.Active()
 		x.RegisterPromptSection(sdk.PromptSectionDef{
@@ -34,7 +42,7 @@ func main() {
 
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "plan_create",
-		Description: "Create a new structured plan with steps. Deactivates any existing active plan.",
+		Description: "Create a new structured plan with steps. Deactivates any existing active plan. Checkpoint commits are enabled by default in git repos.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -44,6 +52,7 @@ func main() {
 					"items":       map[string]any{"type": "string"},
 					"description": "Step descriptions in order",
 				},
+				"checkpoints": map[string]any{"type": "boolean", "description": "Enable checkpoint commits (default: true in git repos)"},
 			},
 			"required": []string{"title", "steps"},
 		},
@@ -53,15 +62,16 @@ func main() {
 
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "plan_update",
-		Description: "Update a step in the active plan: change status, set notes, add a step after, or remove a step.",
+		Description: "Update a step in the active plan: change status, set notes, add a step after, or remove a step. Checkpoint commits are created automatically when marking steps done/skipped/failed if git is enabled.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"step":      map[string]any{"type": "integer", "description": "Step ID to operate on"},
-				"status":    map[string]any{"type": "string", "enum": []string{plan.StatusPending, plan.StatusInProgress, plan.StatusDone, plan.StatusSkipped, plan.StatusFailed}, "description": "New status"},
-				"notes":     map[string]any{"type": "string", "description": "Freeform notes on this step"},
-				"add_after": map[string]any{"type": "string", "description": "Add a new step after this step ID with this text"},
-				"remove":    map[string]any{"type": "boolean", "description": "Remove this step"},
+				"step":       map[string]any{"type": "integer", "description": "Step ID to operate on"},
+				"status":     map[string]any{"type": "string", "enum": []string{plan.StatusPending, plan.StatusInProgress, plan.StatusDone, plan.StatusSkipped, plan.StatusFailed}, "description": "New status"},
+				"notes":      map[string]any{"type": "string", "description": "Freeform notes on this step"},
+				"add_after":  map[string]any{"type": "string", "description": "Add a new step after this step ID with this text"},
+				"remove":     map[string]any{"type": "boolean", "description": "Remove this step"},
+				"checkpoint": map[string]any{"type": "boolean", "description": "Force create checkpoint commit (default: auto on terminal status)"},
 			},
 			"required": []string{"step"},
 		},
@@ -105,6 +115,7 @@ func handleCreate(_ context.Context, args map[string]any) (*sdk.ToolResult, erro
 
 	title, _ := args["title"].(string)
 	rawSteps, _ := args["steps"].([]any)
+	checkpoints, hasCheckpoints := args["checkpoints"].(bool)
 
 	steps := make([]string, 0, len(rawSteps))
 	for _, s := range rawSteps {
@@ -116,6 +127,13 @@ func handleCreate(_ context.Context, args map[string]any) (*sdk.ToolResult, erro
 	p, err := plan.NewPlan(title, steps)
 	if err != nil {
 		return sdk.ErrorResult(err.Error()), nil
+	}
+
+	// Enable checkpoints by default in git repos, unless explicitly disabled
+	if hasCheckpoints {
+		p.GitEnabled = checkpoints
+	} else if git != nil {
+		p.GitEnabled = true
 	}
 
 	_ = store.Deactivate()
@@ -145,14 +163,39 @@ func handleUpdate(_ context.Context, args map[string]any) (*sdk.ToolResult, erro
 	notes, _ := args["notes"].(string)
 	addAfter, _ := args["add_after"].(string)
 	remove, _ := args["remove"].(bool)
+	forceCheckpoint, _ := args["checkpoint"].(bool)
 
 	if remove {
 		if err := p.RemoveStep(stepID); err != nil {
 			return sdk.ErrorResult(err.Error()), nil
 		}
 	} else {
+		var commitSHA string
+
+		// Create checkpoint commit for terminal statuses or forced checkpoint
+		isTerminal := status == plan.StatusDone || status == plan.StatusSkipped || status == plan.StatusFailed
+		if isTerminal || forceCheckpoint {
+			if git != nil && p.GitEnabled {
+				// Find step text for commit message
+				var stepText string
+				for _, s := range p.Steps {
+					if s.ID == stepID {
+						stepText = s.Text
+						break
+					}
+				}
+				sha, err := git.Checkpoint(p.Slug, stepID, stepText)
+				if err != nil {
+					// Log but don't fail - checkpoint is optional
+					notes = notes + fmt.Sprintf(" [checkpoint failed: %v]", err)
+				} else {
+					commitSHA = sha
+				}
+			}
+		}
+
 		if status != "" || notes != "" {
-			if err := p.UpdateStep(stepID, status, notes); err != nil {
+			if err := p.UpdateStep(stepID, status, notes, commitSHA); err != nil {
 				return sdk.ErrorResult(err.Error()), nil
 			}
 		}
@@ -202,8 +245,12 @@ func makeCommandHandler(e *sdk.Extension) func(context.Context, string) error {
 			approvePlan(e)
 		case args == "mode":
 			showPlanMode(e)
+		case args == "checkpoints":
+			toggleCheckpoints(e)
+		case args == "resume":
+			showResume(e)
 		default:
-			e.ShowMessage("Usage: /plan [list|switch <slug>|archive|clear|delete <slug>|approve|mode]")
+			e.ShowMessage("Usage: /plan [list|switch <slug>|archive|clear|delete <slug>|approve|mode|checkpoints|resume]")
 		}
 		return nil
 	}
@@ -319,6 +366,55 @@ func showPlanMode(e *sdk.Extension) {
 		mode = plan.ModeExecute
 	}
 	e.ShowMessage(fmt.Sprintf("Plan mode: %s", mode))
+}
+
+func toggleCheckpoints(e *sdk.Extension) {
+	p, err := store.Active()
+	if err != nil {
+		e.ShowMessage(fmt.Sprintf("error: %v", err))
+		return
+	}
+	if p == nil {
+		e.ShowMessage("No active plan.")
+		return
+	}
+	if git == nil {
+		e.ShowMessage("Not in a git repository — checkpoints unavailable.")
+		return
+	}
+	p.GitEnabled = !p.GitEnabled
+	if err := store.Save(p); err != nil {
+		e.ShowMessage(fmt.Sprintf("error: %v", err))
+		return
+	}
+	status := "disabled"
+	if p.GitEnabled {
+		status = "enabled"
+	}
+	e.ShowMessage(fmt.Sprintf("Checkpoint commits: %s", status))
+}
+
+func showResume(e *sdk.Extension) {
+	p, err := store.Active()
+	if err != nil {
+		e.ShowMessage(fmt.Sprintf("error: %v", err))
+		return
+	}
+	if p == nil {
+		e.ShowMessage("No active plan.")
+		return
+	}
+	resume := p.ResumeStep()
+	if resume == nil {
+		e.ShowMessage("Plan is complete — no resume point.")
+		return
+	}
+	var msg strings.Builder
+	fmt.Fprintf(&msg, "Resume: step %d — %s\n", resume.ID, resume.Text)
+	if cp := p.LastCheckpoint(); cp != nil {
+		fmt.Fprintf(&msg, "Last checkpoint: step %d (%s)\n", cp.ID, plan.ShortSHA(cp.CommitSHA))
+	}
+	e.ShowMessage(msg.String())
 }
 
 func intArg(args map[string]any, key string) int {

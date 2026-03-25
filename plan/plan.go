@@ -21,20 +21,22 @@ const (
 )
 
 type Plan struct {
-	Title   string    `yaml:"title"`
-	Slug    string    `yaml:"slug"`
-	Mode    string    `yaml:"mode,omitempty"`
-	Created time.Time `yaml:"created"`
-	Updated time.Time `yaml:"updated"`
-	Active  bool      `yaml:"active"`
-	Steps   []Step    `yaml:"steps"`
+	Title      string    `yaml:"title"`
+	Slug       string    `yaml:"slug"`
+	Mode       string    `yaml:"mode,omitempty"`
+	Created    time.Time `yaml:"created"`
+	Updated    time.Time `yaml:"updated"`
+	Active     bool      `yaml:"active"`
+	Steps      []Step    `yaml:"steps"`
+	GitEnabled bool      `yaml:"git_enabled,omitempty"` // checkpoint commits enabled
 }
 
 type Step struct {
-	ID     int    `yaml:"id"`
-	Text   string `yaml:"text"`
-	Status string `yaml:"status"`
-	Notes  string `yaml:"notes,omitempty"`
+	ID        int    `yaml:"id"`
+	Text      string `yaml:"text"`
+	Status    string `yaml:"status"`
+	Notes     string `yaml:"notes,omitempty"`
+	CommitSHA string `yaml:"commit_sha,omitempty"` // checkpoint commit for this step
 }
 
 func NewPlan(title string, steps []string) (*Plan, error) {
@@ -64,7 +66,7 @@ func NewPlan(title string, steps []string) (*Plan, error) {
 	return p, nil
 }
 
-func (p *Plan) UpdateStep(id int, status, notes string) error {
+func (p *Plan) UpdateStep(id int, status, notes, commitSHA string) error {
 	idx := p.stepIndex(id)
 	if idx < 0 {
 		return fmt.Errorf("plan: step %d not found", id)
@@ -85,6 +87,9 @@ func (p *Plan) UpdateStep(id int, status, notes string) error {
 	}
 	if notes != "" {
 		p.Steps[idx].Notes = notes
+	}
+	if commitSHA != "" {
+		p.Steps[idx].CommitSHA = commitSHA
 	}
 	p.Updated = time.Now().UTC()
 	return nil
@@ -155,6 +160,29 @@ func (p *Plan) AppendStep(text string) {
 		Status: StatusPending,
 	})
 	p.Updated = time.Now().UTC()
+}
+
+// ResumeStep returns the next incomplete step, or nil if complete.
+func (p *Plan) ResumeStep() *Step {
+	for i := range p.Steps {
+		switch p.Steps[i].Status {
+		case StatusDone, StatusSkipped, StatusFailed:
+			continue
+		default:
+			return &p.Steps[i]
+		}
+	}
+	return nil
+}
+
+// LastCheckpoint returns the most recent step with a commit SHA.
+func (p *Plan) LastCheckpoint() *Step {
+	for i := len(p.Steps) - 1; i >= 0; i-- {
+		if p.Steps[i].CommitSHA != "" {
+			return &p.Steps[i]
+		}
+	}
+	return nil
 }
 
 func (p *Plan) stepIndex(id int) int {

@@ -98,7 +98,7 @@ func TestUpdateStep(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"alpha", "beta"})
 		require.NoError(t, err)
 
-		require.NoError(t, p.UpdateStep(1, plan.StatusInProgress, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusInProgress, "", ""))
 		assert.Equal(t, plan.StatusInProgress, p.Steps[0].Status)
 	})
 
@@ -107,10 +107,10 @@ func TestUpdateStep(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"alpha", "beta", "gamma"})
 		require.NoError(t, err)
 
-		require.NoError(t, p.UpdateStep(1, plan.StatusInProgress, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusInProgress, "", ""))
 		assert.Equal(t, plan.StatusInProgress, p.Steps[0].Status)
 
-		require.NoError(t, p.UpdateStep(2, plan.StatusInProgress, ""))
+		require.NoError(t, p.UpdateStep(2, plan.StatusInProgress, "", ""))
 		assert.Equal(t, plan.StatusPending, p.Steps[0].Status, "step 1 should revert to pending")
 		assert.Equal(t, plan.StatusInProgress, p.Steps[1].Status)
 	})
@@ -120,8 +120,8 @@ func TestUpdateStep(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"alpha", "beta"})
 		require.NoError(t, err)
 
-		require.NoError(t, p.UpdateStep(1, plan.StatusInProgress, ""))
-		require.NoError(t, p.UpdateStep(1, plan.StatusDone, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusInProgress, "", ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusDone, "", ""))
 		assert.Equal(t, plan.StatusDone, p.Steps[0].Status)
 		assert.Equal(t, plan.StatusPending, p.Steps[1].Status)
 	})
@@ -131,7 +131,7 @@ func TestUpdateStep(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"alpha"})
 		require.NoError(t, err)
 
-		require.NoError(t, p.UpdateStep(1, "", "my note here"))
+		require.NoError(t, p.UpdateStep(1, "", "my note here", ""))
 		assert.Equal(t, "my note here", p.Steps[0].Notes)
 		assert.Equal(t, plan.StatusPending, p.Steps[0].Status, "status unchanged when not specified")
 	})
@@ -141,7 +141,7 @@ func TestUpdateStep(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"alpha"})
 		require.NoError(t, err)
 
-		err = p.UpdateStep(1, "bogus", "")
+		err = p.UpdateStep(1, "bogus", "", "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid status")
 	})
@@ -151,7 +151,7 @@ func TestUpdateStep(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"alpha"})
 		require.NoError(t, err)
 
-		err = p.UpdateStep(99, plan.StatusDone, "")
+		err = p.UpdateStep(99, plan.StatusDone, "", "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found")
 	})
@@ -255,8 +255,8 @@ func TestProgress(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"a", "b", "c"})
 		require.NoError(t, err)
 
-		require.NoError(t, p.UpdateStep(1, plan.StatusDone, ""))
-		require.NoError(t, p.UpdateStep(3, plan.StatusDone, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusDone, "", ""))
+		require.NoError(t, p.UpdateStep(3, plan.StatusDone, "", ""))
 
 		done, total := p.Progress()
 		assert.Equal(t, 2, done)
@@ -268,7 +268,7 @@ func TestProgress(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"a", "b"})
 		require.NoError(t, err)
 
-		require.NoError(t, p.UpdateStep(1, plan.StatusInProgress, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusInProgress, "", ""))
 
 		done, total := p.Progress()
 		assert.Equal(t, 0, done)
@@ -280,7 +280,7 @@ func TestProgress(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"a", "b"})
 		require.NoError(t, err)
 
-		require.NoError(t, p.UpdateStep(1, plan.StatusSkipped, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusSkipped, "", ""))
 
 		done, total := p.Progress()
 		assert.Equal(t, 0, done)
@@ -292,8 +292,8 @@ func TestProgress(t *testing.T) {
 		p, err := plan.NewPlan("Test", []string{"a", "b"})
 		require.NoError(t, err)
 
-		require.NoError(t, p.UpdateStep(1, plan.StatusDone, ""))
-		require.NoError(t, p.UpdateStep(2, plan.StatusDone, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusDone, "", ""))
+		require.NoError(t, p.UpdateStep(2, plan.StatusDone, "", ""))
 
 		done, total := p.Progress()
 		assert.Equal(t, 2, done)
@@ -483,9 +483,9 @@ func TestFormatPromptStatuses(t *testing.T) {
 	p, err := plan.NewPlan("My Task", []string{"pending step", "active step", "done step", "skipped step"})
 	require.NoError(t, err)
 
-	require.NoError(t, p.UpdateStep(2, plan.StatusInProgress, ""))
-	require.NoError(t, p.UpdateStep(3, plan.StatusDone, ""))
-	require.NoError(t, p.UpdateStep(4, plan.StatusSkipped, ""))
+	require.NoError(t, p.UpdateStep(2, plan.StatusInProgress, "", ""))
+	require.NoError(t, p.UpdateStep(3, plan.StatusDone, "", ""))
+	require.NoError(t, p.UpdateStep(4, plan.StatusSkipped, "", ""))
 
 	out := plan.FormatPrompt(p)
 
@@ -503,7 +503,7 @@ func TestFormatPromptNotes(t *testing.T) {
 	p, err := plan.NewPlan("Noted Plan", []string{"step with note"})
 	require.NoError(t, err)
 
-	require.NoError(t, p.UpdateStep(1, "", "this is a note"))
+	require.NoError(t, p.UpdateStep(1, "", "this is a note", ""))
 
 	out := plan.FormatPrompt(p)
 	assert.Contains(t, out, "  - this is a note")
@@ -515,7 +515,7 @@ func TestFormatPromptProgress(t *testing.T) {
 	p, err := plan.NewPlan("Progress Plan", []string{"a", "b", "c"})
 	require.NoError(t, err)
 
-	require.NoError(t, p.UpdateStep(1, plan.StatusDone, ""))
+	require.NoError(t, p.UpdateStep(1, plan.StatusDone, "", ""))
 
 	out := plan.FormatPrompt(p)
 	assert.True(t, strings.Contains(out, "1/3"), "expected progress footer with 1/3 done, got: %s", out)
@@ -540,8 +540,8 @@ func TestIsComplete(t *testing.T) {
 		t.Parallel()
 		p, err := plan.NewPlan("Test", []string{"a", "b"})
 		require.NoError(t, err)
-		require.NoError(t, p.UpdateStep(1, plan.StatusDone, ""))
-		require.NoError(t, p.UpdateStep(2, plan.StatusDone, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusDone, "", ""))
+		require.NoError(t, p.UpdateStep(2, plan.StatusDone, "", ""))
 		assert.True(t, p.IsComplete())
 	})
 
@@ -549,9 +549,9 @@ func TestIsComplete(t *testing.T) {
 		t.Parallel()
 		p, err := plan.NewPlan("Test", []string{"a", "b", "c"})
 		require.NoError(t, err)
-		require.NoError(t, p.UpdateStep(1, plan.StatusDone, ""))
-		require.NoError(t, p.UpdateStep(2, plan.StatusSkipped, ""))
-		require.NoError(t, p.UpdateStep(3, plan.StatusFailed, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusDone, "", ""))
+		require.NoError(t, p.UpdateStep(2, plan.StatusSkipped, "", ""))
+		require.NoError(t, p.UpdateStep(3, plan.StatusFailed, "", ""))
 		assert.True(t, p.IsComplete())
 	})
 
@@ -559,7 +559,7 @@ func TestIsComplete(t *testing.T) {
 		t.Parallel()
 		p, err := plan.NewPlan("Test", []string{"a", "b"})
 		require.NoError(t, err)
-		require.NoError(t, p.UpdateStep(1, plan.StatusDone, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusDone, "", ""))
 		// step 2 remains pending
 		assert.False(t, p.IsComplete())
 	})
@@ -568,8 +568,8 @@ func TestIsComplete(t *testing.T) {
 		t.Parallel()
 		p, err := plan.NewPlan("Test", []string{"a", "b"})
 		require.NoError(t, err)
-		require.NoError(t, p.UpdateStep(1, plan.StatusDone, ""))
-		require.NoError(t, p.UpdateStep(2, plan.StatusInProgress, ""))
+		require.NoError(t, p.UpdateStep(1, plan.StatusDone, "", ""))
+		require.NoError(t, p.UpdateStep(2, plan.StatusInProgress, "", ""))
 		assert.False(t, p.IsComplete())
 	})
 
@@ -590,7 +590,7 @@ func TestUpdateStepFailed(t *testing.T) {
 
 	p, err := plan.NewPlan("Fail Test", []string{"step one"})
 	require.NoError(t, err)
-	require.NoError(t, p.UpdateStep(1, plan.StatusFailed, ""))
+	require.NoError(t, p.UpdateStep(1, plan.StatusFailed, "", ""))
 	assert.Equal(t, plan.StatusFailed, p.Steps[0].Status)
 
 	require.NoError(t, s.Save(p))
@@ -606,8 +606,8 @@ func TestFormatPromptFailed(t *testing.T) {
 	p, err := plan.NewPlan("Fail Format", []string{"good step", "bad step"})
 	require.NoError(t, err)
 
-	require.NoError(t, p.UpdateStep(1, plan.StatusDone, ""))
-	require.NoError(t, p.UpdateStep(2, plan.StatusFailed, ""))
+	require.NoError(t, p.UpdateStep(1, plan.StatusDone, "", ""))
+	require.NoError(t, p.UpdateStep(2, plan.StatusFailed, "", ""))
 
 	out := plan.FormatPrompt(p)
 	assert.Contains(t, out, "- [x] 1. good step")
