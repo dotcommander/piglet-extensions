@@ -1,24 +1,22 @@
-// Package webfetch provides web fetch and search capabilities via Jina AI readers.
+// Package webfetch provides web fetch and search capabilities via multiple providers.
 package webfetch
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
 
 const (
-	DefaultReaderBase = "https://r.jina.ai/"
-	DefaultSearchBase = "https://s.jina.ai/"
-	maxBodyBytes      = 100 * 1024 // 100KB
-	fetchTimeout      = 30 * time.Second
-	searchTimeout     = 15 * time.Second
-	userAgent         = "piglet/1.0"
+	maxBodyBytes  = 100 * 1024 // 100KB
+	fetchTimeout  = 30 * time.Second
+	searchTimeout = 15 * time.Second
+	userAgent     = "piglet/1.0"
 )
 
 // SearchResult holds a single search result.
@@ -28,42 +26,193 @@ type SearchResult struct {
 	Description string `json:"description"`
 }
 
-// Client performs web fetch and search operations.
-// The zero value is not usable; use New or Default.
-type Client struct {
-	readerBase string
-	searchBase string
-	http       *http.Client
+// HTTPError represents an HTTP error with status code and URL.
+type HTTPError struct {
+	URL        string
+	StatusCode int
+	Err        error
 }
 
-// New creates a Client with custom base URLs (used in tests to point at httptest servers).
-func New(readerBase, searchBase string) *Client {
+// Error implements the error interface.
+func (e *HTTPError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("request %s: %v", e.URL, e.Err)
+	}
+	return fmt.Sprintf("request %s: HTTP %d", e.URL, e.StatusCode)
+}
+
+// Unwrap returns the underlying error.
+func (e *HTTPError) Unwrap() error {
+	return e.Err
+}
+
+// isRecoverable returns true if the error might succeed with a different provider.
+func isRecoverable(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) {
+		// Network errors (status 0) are recoverable
+		if httpErr.StatusCode == 0 {
+			return true
+		}
+		// 4xx client errors (except 429) are not recoverable
+		if httpErr.StatusCode >= 400 && httpErr.StatusCode < 500 && httpErr.StatusCode != 429 {
+			return false
+		}
+		// 5xx server errors and 429 rate limits are recoverable
+		return true
+	}
+
+	// Other errors (parsing, etc.) might be recoverable
+	return true
+}
+
+// FetchProvider defines the interface for content fetching.
+type FetchProvider interface {
+	Name() string
+	Fetch(ctx context.Context, rawURL string) (string, error)
+}
+
+// SearchProvider defines the interface for web search.
+type SearchProvider interface {
+	Name() string
+	Search(ctx context.Context, query string, limit int) ([]SearchResult, error)
+}
+
+// Client performs web fetch and search operations with fallback support.
+// The zero value is not usable; use New, NewWithConfig, Default, or NewForTest.
+type Client struct {
+	fetchProviders  []FetchProvider
+	searchProviders []SearchProvider
+	http            *http.Client
+	github          *GitHubClient
+	storage         *Storage
+}
+
+// New creates a Client with custom provider lists (used for testing).
+func New(fetchProviders []FetchProvider, searchProviders []SearchProvider, github *GitHubClient) *Client {
 	return &Client{
-		readerBase: readerBase,
-		searchBase: searchBase,
-		http:       &http.Client{},
+		fetchProviders:  fetchProviders,
+		searchProviders: searchProviders,
+		http: &http.Client{
+			Timeout: fetchTimeout,
+		},
+		github:  github,
+		storage: NewStorage(),
 	}
 }
 
-// Default returns a Client configured for the live Jina endpoints.
-func Default() *Client {
-	return New(DefaultReaderBase, DefaultSearchBase)
+// NewWithConfig creates a Client with providers based on the given config.
+// Providers are added in order: Jina (always) -> Perplexity (if API key) -> Gemini (if API key).
+func NewWithConfig(cfg *Config) *Client {
+	var fetchProviders []FetchProvider
+	var searchProviders []SearchProvider
+
+	// Always add Jina as the primary provider
+	jina := NewJinaProvider()
+	fetchProviders = append(fetchProviders, jina)
+	searchProviders = append(searchProviders, jina)
+
+	// Add Perplexity if API key is configured
+	if perplexity := NewPerplexityProvider(cfg.PerplexityAPIKey); perplexity != nil {
+		fetchProviders = append(fetchProviders, perplexity)
+		searchProviders = append(searchProviders, perplexity)
+	}
+
+	// Add Gemini if API key is configured
+	if gemini := NewGeminiProvider(cfg.GeminiAPIKey); gemini != nil {
+		fetchProviders = append(fetchProviders, gemini)
+		searchProviders = append(searchProviders, gemini)
+	}
+
+	// Create GitHub client if enabled
+	var github *GitHubClient
+	if cfg.GitHub.Enabled {
+		github = NewGitHubClient(&cfg.GitHub)
+	}
+
+	return New(fetchProviders, searchProviders, github)
 }
 
-// Fetch retrieves content from the given URL.
-// If raw is false, content is fetched via the Jina reader (returns clean markdown).
+// Default returns a Client with only Jina provider (no API keys required).
+func Default() *Client {
+	return NewWithConfig(&Config{
+		GitHub: GitHubConfig{
+			Enabled:        true,
+			SkipLargeRepos: true,
+		},
+	})
+}
+
+// NewForTest creates a Client with mock Jina providers for testing.
+func NewForTest(readerBase, searchBase string) *Client {
+	jina := NewJinaProviderWithBase(readerBase, searchBase)
+	return New([]FetchProvider{jina}, []SearchProvider{jina}, nil)
+}
+
+// Fetch retrieves content from the given URL with provider fallback.
+// If raw is false, content is fetched via reader providers (returns clean markdown).
 // If raw is true, the URL is fetched directly.
-// Response bodies are capped at 100KB; a truncation note is appended if exceeded.
 func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, error) {
+	// Raw mode fetches directly without provider fallback
+	if raw {
+		content, err := c.fetchRaw(ctx, rawURL)
+		if err != nil {
+			return "", err
+		}
+		// Store full content before returning
+		c.storage.StoreFetch(rawURL, content)
+		return content, nil
+	}
+
+	// Try GitHub first if enabled
+	if c.github != nil {
+		result, err := c.github.Fetch(ctx, rawURL)
+		if err != nil {
+			return "", err
+		}
+		if result != nil {
+			content := FormatGitHubResult(result)
+			c.storage.StoreFetch(rawURL, content)
+			return content, nil
+		}
+	}
+
+	// Try each provider in order
+	var lastErr error
+	for _, provider := range c.fetchProviders {
+		content, err := provider.Fetch(ctx, rawURL)
+		if err == nil {
+			// Store full content before returning
+			c.storage.StoreFetch(rawURL, content)
+			return content, nil
+		}
+
+		slog.Debug("fetch provider failed",
+			"provider", provider.Name(),
+			"url", rawURL,
+			"error", err)
+
+		lastErr = err
+
+		// If error is not recoverable, don't try next provider
+		if !isRecoverable(err) {
+			break
+		}
+	}
+
+	return "", fmt.Errorf("all fetch providers failed: %w", lastErr)
+}
+
+// fetchRaw fetches the URL directly without any provider.
+func (c *Client) fetchRaw(ctx context.Context, rawURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 
-	fetchURL := rawURL
-	if !raw {
-		fetchURL = c.readerBase + rawURL
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fetchURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -71,12 +220,12 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, er
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("fetch %s: %w", fetchURL, err)
+		return "", &HTTPError{URL: rawURL, StatusCode: 0, Err: err}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("fetch %s: HTTP %d", fetchURL, resp.StatusCode)
+		return "", &HTTPError{URL: rawURL, StatusCode: resp.StatusCode}
 	}
 
 	limited := io.LimitReader(resp.Body, maxBodyBytes+1)
@@ -93,74 +242,32 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, er
 	return content, nil
 }
 
-// jinaSearchResponse is the JSON envelope returned by s.jina.ai.
-type jinaSearchResponse struct {
-	Data []jinaSearchItem `json:"data"`
-}
-
-type jinaSearchItem struct {
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	Description string `json:"description"`
-	Content     string `json:"content"`
-}
-
-// Search queries the Jina search endpoint and returns up to limit results.
+// Search queries providers and returns up to limit results with fallback.
 func (c *Client) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
-	if limit <= 0 {
-		limit = 5
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
-	defer cancel()
-
-	searchURL := c.searchBase + url.PathEscape(query)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("search %q: %w", query, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("search %q: HTTP %d", query, resp.StatusCode)
-	}
-
-	var envelope jinaSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
-	}
-
-	items := envelope.Data
-	if len(items) > limit {
-		items = items[:limit]
-	}
-
-	results := make([]SearchResult, 0, len(items))
-	for _, item := range items {
-		desc := item.Description
-		if desc == "" {
-			// Fall back to a content snippet when description is absent.
-			desc = strings.TrimSpace(item.Content)
-			if len(desc) > 200 {
-				desc = desc[:200] + "…"
-			}
+	// Try each provider in order
+	var lastErr error
+	for _, provider := range c.searchProviders {
+		results, err := provider.Search(ctx, query, limit)
+		if err == nil {
+			// Store results before returning
+			c.storage.StoreSearch(query, results)
+			return results, nil
 		}
-		results = append(results, SearchResult{
-			Title:       item.Title,
-			URL:         item.URL,
-			Description: desc,
-		})
+
+		slog.Debug("search provider failed",
+			"provider", provider.Name(),
+			"query", query,
+			"error", err)
+
+		lastErr = err
+
+		// If error is not recoverable, don't try next provider
+		if !isRecoverable(err) {
+			break
+		}
 	}
 
-	return results, nil
+	return nil, fmt.Errorf("all search providers failed: %w", lastErr)
 }
 
 // FormatResults renders a slice of SearchResults as a markdown list.
@@ -173,4 +280,9 @@ func FormatResults(results []SearchResult) string {
 		fmt.Fprintf(&b, "%d. **%s**\n   %s\n   %s\n\n", i+1, r.Title, r.URL, r.Description)
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// GetStorage returns the session storage for cached results.
+func (c *Client) GetStorage() *Storage {
+	return c.storage
 }

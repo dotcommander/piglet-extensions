@@ -5,14 +5,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/dotcommander/piglet-extensions/webfetch"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 func main() {
-	client := webfetch.Default()
-	e := sdk.New("webfetch", "0.1.0")
+	cfg, err := webfetch.LoadConfig()
+	if err != nil {
+		slog.Error("failed to load config", "error", err)
+	}
+
+	client := webfetch.NewWithConfig(cfg)
+	e := sdk.New("webfetch", "0.2.0")
 
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Web Access",
@@ -86,6 +92,45 @@ func main() {
 				return sdk.ErrorResult(fmt.Sprintf("search failed: %s", err)), nil
 			}
 			return sdk.TextResult(webfetch.FormatResults(results)), nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "webfetch_get_stored",
+		Description: "Retrieve cached content from a previous web_fetch or web_search call. Useful when content was truncated in the original response.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"url": map[string]any{
+					"type":        "string",
+					"description": "URL to retrieve (for fetch results).",
+				},
+				"query": map[string]any{
+					"type":        "string",
+					"description": "Query to retrieve (for search results).",
+				},
+			},
+		},
+		PromptHint: "Retrieve cached web content",
+		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			url, _ := args["url"].(string)
+			query, _ := args["query"].(string)
+
+			if url != "" {
+				content := client.GetStorage().GetFetch(url)
+				if content == "" {
+					return sdk.ErrorResult("URL not found in cache"), nil
+				}
+				return sdk.TextResult(content), nil
+			}
+			if query != "" {
+				results := client.GetStorage().GetSearch(query)
+				if results == nil {
+					return sdk.ErrorResult("Query not found in cache"), nil
+				}
+				return sdk.TextResult(webfetch.FormatResults(results)), nil
+			}
+			return sdk.ErrorResult("url or query is required"), nil
 		},
 	})
 

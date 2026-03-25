@@ -14,6 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	defaultReaderBase = "https://r.jina.ai/"
+	defaultSearchBase = "https://s.jina.ai/"
+)
+
 // makeSearchServer creates an httptest.Server that returns the given items as
 // a Jina-formatted JSON response.
 func makeSearchServer(t *testing.T, items []map[string]any) *httptest.Server {
@@ -42,7 +47,7 @@ func TestFetch_ReaderMode(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := webfetch.New(srv.URL+"/", webfetch.DefaultSearchBase)
+	client := webfetch.NewForTest(srv.URL+"/", defaultSearchBase)
 	got, err := client.Fetch(context.Background(), "http://example.com/page", false)
 	require.NoError(t, err)
 	assert.Equal(t, body, got)
@@ -60,7 +65,7 @@ func TestFetch_RawMode(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	// In raw mode the target URL is fetched directly, so we use a dummy reader base.
-	client := webfetch.New(webfetch.DefaultReaderBase, webfetch.DefaultSearchBase)
+	client := webfetch.NewForTest(defaultReaderBase, defaultSearchBase)
 	got, err := client.Fetch(context.Background(), srv.URL+"/page", true)
 	require.NoError(t, err)
 	assert.Equal(t, rawHTML, got)
@@ -76,7 +81,7 @@ func TestFetch_Truncation(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := webfetch.New(webfetch.DefaultReaderBase, webfetch.DefaultSearchBase)
+	client := webfetch.NewForTest(defaultReaderBase, defaultSearchBase)
 	got, err := client.Fetch(context.Background(), srv.URL+"/", true)
 	require.NoError(t, err)
 	assert.True(t, len(got) <= 100*1024+len("\n\n[Content truncated at 100KB]"),
@@ -92,7 +97,7 @@ func TestFetch_HTTPError(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := webfetch.New(webfetch.DefaultReaderBase, webfetch.DefaultSearchBase)
+	client := webfetch.NewForTest(defaultReaderBase, defaultSearchBase)
 	_, err := client.Fetch(context.Background(), srv.URL+"/missing", true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "404")
@@ -109,7 +114,7 @@ func TestFetch_Timeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	client := webfetch.New(webfetch.DefaultReaderBase, webfetch.DefaultSearchBase)
+	client := webfetch.NewForTest(defaultReaderBase, defaultSearchBase)
 	_, err := client.Fetch(ctx, srv.URL+"/slow", true)
 	require.Error(t, err)
 }
@@ -126,7 +131,7 @@ func TestSearch_Parsing(t *testing.T) {
 	srv := makeSearchServer(t, items)
 	t.Cleanup(srv.Close)
 
-	client := webfetch.New(webfetch.DefaultReaderBase, srv.URL+"/")
+	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
 	results, err := client.Search(context.Background(), "golang", 5)
 	require.NoError(t, err)
 	require.Len(t, results, 2)
@@ -146,7 +151,7 @@ func TestSearch_Limit(t *testing.T) {
 	srv := makeSearchServer(t, items)
 	t.Cleanup(srv.Close)
 
-	client := webfetch.New(webfetch.DefaultReaderBase, srv.URL+"/")
+	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
 	results, err := client.Search(context.Background(), "test", 2)
 	require.NoError(t, err)
 	assert.Len(t, results, 2)
@@ -167,7 +172,7 @@ func TestSearch_DefaultLimit(t *testing.T) {
 	srv := makeSearchServer(t, items)
 	t.Cleanup(srv.Close)
 
-	client := webfetch.New(webfetch.DefaultReaderBase, srv.URL+"/")
+	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
 	results, err := client.Search(context.Background(), "test", 0) // 0 → default 5
 	require.NoError(t, err)
 	assert.Len(t, results, 5)
@@ -190,7 +195,7 @@ func TestSearch_FallbackToContent(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := webfetch.New(webfetch.DefaultReaderBase, srv.URL+"/")
+	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
 	results, err := client.Search(context.Background(), "test", 5)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
@@ -208,7 +213,7 @@ func TestSearch_HTTPError(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := webfetch.New(webfetch.DefaultReaderBase, srv.URL+"/")
+	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
 	_, err := client.Search(context.Background(), "test", 5)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
@@ -222,7 +227,7 @@ func TestSearch_InvalidJSON(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := webfetch.New(webfetch.DefaultReaderBase, srv.URL+"/")
+	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
 	_, err := client.Search(context.Background(), "test", 5)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse response")
