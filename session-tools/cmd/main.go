@@ -1,4 +1,5 @@
-// Session-tools extension. Registers /search, /branch, and /title commands.
+// Session-tools extension. Registers /search, /branch, /title, /handoff commands,
+// session_query tool, and handoff prompt section.
 package main
 
 import (
@@ -6,11 +7,31 @@ import (
 	"fmt"
 	"strings"
 
+	sessiontools "github.com/dotcommander/piglet-extensions/session-tools"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 func main() {
-	e := sdk.New("session-tools", "0.1.0")
+	e := sdk.New("session-tools", "0.2.0")
+
+	var (
+		cwd string
+		cfg sessiontools.Config
+	)
+
+	e.OnInit(func(x *sdk.Extension) {
+		cwd = x.CWD()
+		cfg = sessiontools.LoadConfig()
+
+		content := sessiontools.LoadPromptContent()
+		if content != "" {
+			x.RegisterPromptSection(sdk.PromptSectionDef{
+				Title:   "Session Handoff",
+				Content: content,
+				Order:   95,
+			})
+		}
+	})
 
 	e.RegisterCommand(sdk.CommandDef{
 		Name:        "search",
@@ -83,6 +104,57 @@ func main() {
 			}
 			e.ShowMessage("Session title: " + title)
 			return nil
+		},
+	})
+
+	e.RegisterCommand(sdk.CommandDef{
+		Name:        "handoff",
+		Description: "Transfer context to a new session with structured summary",
+		Handler: func(ctx context.Context, args string) error {
+			if !cfg.Enabled {
+				e.ShowMessage("Session handoff is disabled in config.")
+				return nil
+			}
+			focus := strings.TrimSpace(args)
+			if err := sessiontools.Handoff(ctx, e, cwd, focus); err != nil {
+				e.ShowMessage("Handoff failed: " + err.Error())
+			}
+			return nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "session_query",
+		Description: "Search a session's JSONL file for content matching a keyword query. Use to recover specific details from a parent session after a handoff.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"session_path": map[string]any{
+					"type":        "string",
+					"description": "Path to the session JSONL file (from SessionInfo.Path)",
+				},
+				"query": map[string]any{
+					"type":        "string",
+					"description": "Keyword or phrase to search for in session content",
+				},
+			},
+			"required": []any{"session_path", "query"},
+		},
+		PromptHint: "Search a session file for specific content by keyword",
+		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			path, _ := args["session_path"].(string)
+			query, _ := args["query"].(string)
+
+			if path == "" || query == "" {
+				return sdk.ErrorResult("session_path and query are required"), nil
+			}
+
+			result, err := sessiontools.QuerySession(path, query, cfg.MaxQuerySize)
+			if err != nil {
+				return sdk.ErrorResult(err.Error()), nil
+			}
+
+			return sdk.TextResult(result), nil
 		},
 	})
 
