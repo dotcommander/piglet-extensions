@@ -1,0 +1,6 @@
+name: loop
+version: 0.1.0
+runtime: ./loop
+capabilities:
+  - commands
+  - promptSections

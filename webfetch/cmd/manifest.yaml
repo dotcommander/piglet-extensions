@@ -1,0 +1,6 @@
+name: webfetch
+version: 0.1.0
+runtime: ./webfetch
+capabilities:
+  - tools
+  - promptSections
