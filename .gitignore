@@ -3,7 +3,10 @@
 *.dll
 *.so
 *.dylib
-/cmd
+/repomap
+/pipeline
+/bulk
+/lspq
 
 # Scratch
 .work/
