@@ -32,17 +32,7 @@ func main() {
 		})
 	})
 
-	// /stats command — manual invocation
-	e.RegisterCommand(sdk.CommandDef{
-		Name:        "stats",
-		Description: "Show session token usage statistics",
-		Handler: func(_ context.Context, _ string) error {
-			e.ShowMessage(stats.FormatSummary())
-			return nil
-		},
-	})
-
-	// /usage alias
+	// /usage command — show token usage
 	e.RegisterCommand(sdk.CommandDef{
 		Name:        "usage",
 		Description: "Show session token usage statistics",
