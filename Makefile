@@ -16,6 +16,26 @@ endef
 
 $(foreach ext,$(EXTENSION_NAMES),$(eval $(call EXT_RULE,$(ext))))
 
+CLI_NAMES := repomap pipeline bulk lspq
+CLI_DIR := $(HOME)/go/bin
+
+.PHONY: cli $(addprefix cli-,$(CLI_NAMES))
+
+cli: $(addprefix cli-,$(CLI_NAMES))
+	@echo "CLIs installed to $(CLI_DIR)"
+
+cli-repomap:
+	go build -o $(CLI_DIR)/repomap ./cmd/repomap/
+
+cli-pipeline:
+	go build -o $(CLI_DIR)/pipeline ./cmd/pipeline/
+
+cli-bulk:
+	go build -o $(CLI_DIR)/bulk ./cmd/bulk/
+
+cli-lspq:
+	go build -o $(CLI_DIR)/lspq ./cmd/lspq/
+
 clean:
 	@for ext in $(EXTENSION_NAMES); do \
 		rm -rf $(EXTENSIONS_DIR)/$$ext; \
