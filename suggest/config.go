@@ -2,13 +2,10 @@ package suggest
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
-	"gopkg.in/yaml.v3"
 )
 
 // Config holds suggestion settings.
@@ -35,32 +32,11 @@ func DefaultConfig() Config {
 
 // LoadConfig loads config from ~/.config/piglet/suggest.yaml, creating defaults if missing.
 func LoadConfig() Config {
-	cfg := DefaultConfig()
-
-	dir, err := xdg.ConfigDir()
-	if err != nil {
-		return cfg
-	}
-
-	cfgPath := filepath.Join(dir, "suggest.yaml")
-	data, err := os.ReadFile(cfgPath)
-	if err != nil {
-		// Create default config atomically
-		defaultData, _ := yaml.Marshal(cfg)
-		tmp := cfgPath + ".tmp"
-		if os.WriteFile(tmp, defaultData, 0644) == nil {
-			os.Rename(tmp, cfgPath)
-		}
-		return cfg
-	}
-
-	_ = yaml.Unmarshal(data, &cfg)
-	return cfg
+	return xdg.LoadYAML("suggest.yaml", DefaultConfig())
 }
 
 // LoadPrompt loads the prompt template from ~/.config/piglet/suggest.md, creating default if missing.
 func LoadPrompt(ext *sdk.Extension) string {
-	// Try to read from host first
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -69,25 +45,7 @@ func LoadPrompt(ext *sdk.Extension) string {
 		return prompt
 	}
 
-	// Fallback: read from file directly
-	dir, err := xdg.ConfigDir()
-	if err != nil {
-		return DefaultPrompt()
-	}
-
-	promptPath := filepath.Join(dir, "suggest.md")
-	data, err := os.ReadFile(promptPath)
-	if err != nil {
-		// Create default prompt atomically
-		defaultPrompt := DefaultPrompt()
-		tmp := promptPath + ".tmp"
-		if os.WriteFile(tmp, []byte(defaultPrompt+"\n"), 0644) == nil {
-			os.Rename(tmp, promptPath)
-		}
-		return defaultPrompt
-	}
-
-	return string(data)
+	return xdg.LoadOrCreateFile("suggest.md", DefaultPrompt())
 }
 
 // DefaultPrompt returns the default suggestion prompt template.

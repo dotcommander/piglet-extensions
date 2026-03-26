@@ -41,7 +41,7 @@ func (s *Store) savePlan(p *Plan) error {
 	if err != nil {
 		return fmt.Errorf("plan: marshal: %w", err)
 	}
-	return atomicWrite(s.planPath(p.Slug), data)
+	return xdg.WriteFileAtomic(s.planPath(p.Slug), data)
 }
 
 func (s *Store) Save(p *Plan) error {
@@ -176,14 +176,3 @@ func (s *Store) loadFile(path string) (*Plan, error) {
 	return &p, nil
 }
 
-func atomicWrite(path string, data []byte) error {
-	tmp := path + ".piglet-tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return fmt.Errorf("plan: write tmp: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("plan: rename: %w", err)
-	}
-	return nil
-}

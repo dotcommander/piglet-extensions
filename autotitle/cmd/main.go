@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -90,26 +88,7 @@ func main() {
 }
 
 func ensureDefaultConfig() string {
-	dir, err := xdg.ConfigDir()
-	if err != nil {
-		return ""
-	}
-	p := filepath.Join(dir, "autotitle.md")
-	data, err := os.ReadFile(p)
-	if err == nil {
-		return strings.TrimSpace(string(data))
-	}
-	const defaultPrompt = "You generate concise session titles. Given a user-assistant exchange, output a 2-5 word title. No quotes, no punctuation, just the title."
-	// Atomic write: temp file then rename
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, []byte(defaultPrompt+"\n"), 0644); err != nil {
-		return defaultPrompt
-	}
-	if err := os.Rename(tmp, p); err != nil {
-		os.Remove(tmp)
-		return defaultPrompt
-	}
-	return defaultPrompt
+	return strings.TrimSpace(xdg.LoadOrCreateFile("autotitle.md", "You generate concise session titles. Given a user-assistant exchange, output a 2-5 word title. No quotes, no punctuation, just the title."))
 }
 
 func extractFirstExchange(messages []json.RawMessage) (userText, assistantText string) {

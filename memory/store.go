@@ -205,21 +205,5 @@ func (s *Store) flush() error {
 		buf = append(buf, '\n')
 	}
 
-	return atomicWrite(s.path, buf)
-}
-
-// atomicWrite writes data to a temp file then renames it to path.
-func atomicWrite(path string, data []byte) error {
-	tmp := path + ".piglet-tmp"
-
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return fmt.Errorf("memory: write tmp: %w", err)
-	}
-
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("memory: rename: %w", err)
-	}
-
-	return nil
+	return xdg.WriteFileAtomic(s.path, buf)
 }

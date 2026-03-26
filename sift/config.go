@@ -1,11 +1,7 @@
 package sift
 
 import (
-	"os"
-	"path/filepath"
-
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
-	"gopkg.in/yaml.v3"
 )
 
 type CompressionConfig struct {
@@ -39,24 +35,5 @@ func DefaultConfig() Config {
 }
 
 func LoadConfig() Config {
-	cfg := DefaultConfig()
-
-	dir, err := xdg.ConfigDir()
-	if err != nil {
-		return cfg
-	}
-
-	cfgPath := filepath.Join(dir, "sift.yaml")
-	data, err := os.ReadFile(cfgPath)
-	if err != nil {
-		defaultData, _ := yaml.Marshal(cfg)
-		tmp := cfgPath + ".tmp"
-		if os.WriteFile(tmp, defaultData, 0644) == nil {
-			os.Rename(tmp, cfgPath)
-		}
-		return cfg
-	}
-
-	_ = yaml.Unmarshal(data, &cfg)
-	return cfg
+	return xdg.LoadYAML("sift.yaml", DefaultConfig())
 }

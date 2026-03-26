@@ -39,7 +39,11 @@ func LoadConfig() (*Config, error) {
 					SkipLargeRepos: true,
 				},
 			}
-			if err := saveConfig(configPath, defaultConfig); err != nil {
+			data, err := yaml.Marshal(defaultConfig)
+			if err != nil {
+				return nil, fmt.Errorf("marshal default config: %w", err)
+			}
+			if err := xdg.WriteFileAtomic(configPath, data); err != nil {
 				return nil, fmt.Errorf("create default config: %w", err)
 			}
 			return defaultConfig, nil
@@ -56,31 +60,6 @@ func LoadConfig() (*Config, error) {
 	// Don't override explicit false values from config.
 
 	return &cfg, nil
-}
-
-// saveConfig atomically writes config to the given path.
-func saveConfig(path string, cfg *Config) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-
-	// Write to temp file, then rename for atomicity
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
-		return fmt.Errorf("write temp config: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("rename config: %w", err)
-	}
-
-	return nil
 }
 
 // rateLimiter implements a simple rate limiter for API calls.

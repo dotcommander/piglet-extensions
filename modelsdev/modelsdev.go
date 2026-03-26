@@ -140,7 +140,7 @@ func RefreshFromURL(ctx context.Context, url string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("marshal models.yaml: %w", err)
 	}
-	if err := atomicWrite(modPath, out); err != nil {
+	if err := xdg.WriteFileAtomic(modPath, out); err != nil {
 		return 0, fmt.Errorf("write models.yaml: %w", err)
 	}
 
@@ -222,20 +222,5 @@ func writeCache(c *cache) error {
 	if err != nil {
 		return fmt.Errorf("marshal cache: %w", err)
 	}
-	return atomicWrite(path, data)
-}
-
-func atomicWrite(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create dir: %w", err)
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("write tmp: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("rename: %w", err)
-	}
-	return nil
+	return xdg.WriteFileAtomic(path, data)
 }
