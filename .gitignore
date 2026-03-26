@@ -26,3 +26,6 @@ go.work.sum
 
 # Repomix output
 repomix-output.md
+
+# Override global cache/ ignore — this directory is a Go package, not a build artifact
+!cache/

@@ -3,6 +3,7 @@ package webfetch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/dotcommander/piglet-extensions/cache"
 )
 
 const (
@@ -17,6 +20,11 @@ const (
 	fetchTimeout  = 30 * time.Second
 	searchTimeout = 15 * time.Second
 	userAgent     = "piglet/1.0"
+
+	cacheNSFetch  = "webfetch"
+	cacheNSSearch = "webfetch_search"
+	cacheTTLFetch = 24 * time.Hour
+	cacheTTLSearch = time.Hour
 )
 
 // SearchResult holds a single search result.
@@ -157,6 +165,10 @@ func NewForTest(readerBase, searchBase string) *Client {
 // If raw is false, content is fetched via reader providers (returns clean markdown).
 // If raw is true, the URL is fetched directly.
 func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, error) {
+	if cached, ok := cache.Get(cacheNSFetch, rawURL); ok {
+		return cached, nil
+	}
+
 	// Raw mode fetches directly without provider fallback
 	if raw {
 		content, err := c.fetchRaw(ctx, rawURL)
@@ -165,6 +177,9 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, er
 		}
 		// Store full content before returning
 		c.storage.StoreFetch(rawURL, content)
+		if err := cache.Set(cacheNSFetch, rawURL, content, cacheTTLFetch); err != nil {
+			slog.Debug("cache write failed", "url", rawURL, "error", err)
+		}
 		return content, nil
 	}
 
@@ -177,6 +192,9 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, er
 		if result != nil {
 			content := FormatGitHubResult(result)
 			c.storage.StoreFetch(rawURL, content)
+			if err := cache.Set(cacheNSFetch, rawURL, content, cacheTTLFetch); err != nil {
+			slog.Debug("cache write failed", "url", rawURL, "error", err)
+		}
 			return content, nil
 		}
 	}
@@ -188,6 +206,9 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, er
 		if err == nil {
 			// Store full content before returning
 			c.storage.StoreFetch(rawURL, content)
+			if err := cache.Set(cacheNSFetch, rawURL, content, cacheTTLFetch); err != nil {
+			slog.Debug("cache write failed", "url", rawURL, "error", err)
+		}
 			return content, nil
 		}
 
@@ -244,6 +265,14 @@ func (c *Client) fetchRaw(ctx context.Context, rawURL string) (string, error) {
 
 // Search queries providers and returns up to limit results with fallback.
 func (c *Client) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
+	cacheKey := fmt.Sprintf("%s:%d", query, limit)
+	if cached, ok := cache.Get(cacheNSSearch, cacheKey); ok {
+		var results []SearchResult
+		if err := json.Unmarshal([]byte(cached), &results); err == nil {
+			return results, nil
+		}
+	}
+
 	// Try each provider in order
 	var lastErr error
 	for _, provider := range c.searchProviders {
@@ -251,6 +280,11 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]SearchR
 		if err == nil {
 			// Store results before returning
 			c.storage.StoreSearch(query, results)
+			if data, err := json.Marshal(results); err == nil {
+				if err := cache.Set(cacheNSSearch, cacheKey, string(data), cacheTTLSearch); err != nil {
+					slog.Debug("cache write failed", "query", query, "error", err)
+				}
+			}
 			return results, nil
 		}
 

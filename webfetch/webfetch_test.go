@@ -214,7 +214,7 @@ func TestSearch_HTTPError(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
-	_, err := client.Search(context.Background(), "test", 5)
+	_, err := client.Search(context.Background(), "search-http-error-test", 5)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
 }
@@ -228,7 +228,7 @@ func TestSearch_InvalidJSON(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
-	_, err := client.Search(context.Background(), "test", 5)
+	_, err := client.Search(context.Background(), "search-invalid-json-test", 5)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse response")
 }
