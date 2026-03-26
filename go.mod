@@ -2,13 +2,8 @@ module github.com/dotcommander/piglet-extensions
 
 go 1.26
 
-replace (
-	github.com/dotcommander/piglet => ../piglet
-	github.com/dotcommander/piglet/sdk => ../piglet/sdk
-)
-
 require (
-	github.com/dotcommander/piglet v0.0.0
+	github.com/dotcommander/piglet v0.16.11
 	github.com/dotcommander/piglet/sdk v1.2.0
 	github.com/mark3labs/mcp-go v0.45.0
 	github.com/stretchr/testify v1.11.1
