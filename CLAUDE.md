@@ -40,7 +40,7 @@ Declared in `cmd/manifest.yaml`:
 - **Host protocol methods (v4)**: Extensions can call `e.ConfigGet()`, `e.ConfigReadExtension()`, `e.AuthGetKey()`, `e.Chat()`, and `e.RunAgent()` — the host handles config, auth, LLM calls, and agent loops. No direct piglet imports needed.
 - **Prompt section ordering**: Lower `Order` = earlier in system prompt. Skills=25, memory=50, rtk=90.
 - **Interceptor priority**: Higher = runs first. Safeguard=2000 (security), RTK=100 (rewriting).
-- **Atomic file writes**: Memory store writes temp file then renames.
+- **Atomic file writes**: Memory store and cache library write temp file then rename via `xdg.WriteFileAtomic`.
 
 ## Release Safety (BLOCKING — public repo)
 

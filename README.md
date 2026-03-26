@@ -19,6 +19,7 @@ Each extension runs as a standalone binary, communicating with piglet over its e
 | **repomap** | tool, prompt, event | Builds a ranked repository map by scanning, parsing, and ranking symbols. Auto-rebuilds when files change. |
 | **plan** | tool, command, prompt | Persistent structured task tracking with step statuses (pending, in_progress, done, skipped, failed) and propose/execute modes. |
 | **bulk** | tool | Runs commands across multiple targets (git repos, directories, files, or lists) with parallel execution and filtering. |
+| **cache** | library | File-backed TTL cache (`cache.Get`/`cache.Set`) importable by any extension. Entries stored as JSON under `~/.config/piglet/cache/`. Used by webfetch for persistent URL/search caching. |
 | **mcp** | tool, command, prompt | Connects to configured MCP servers (stdio or HTTP/SSE) and exposes their tools as piglet tools. Config in `~/.config/piglet/mcp.yaml`. |
 
 ## Install
