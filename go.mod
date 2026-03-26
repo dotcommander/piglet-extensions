@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/dotcommander/piglet v0.16.11
-	github.com/dotcommander/piglet/sdk v1.2.0
+	github.com/dotcommander/piglet/sdk v1.3.0
 	github.com/mark3labs/mcp-go v0.45.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.20.0
