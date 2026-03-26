@@ -1,5 +1,5 @@
 // Session-tools extension. Registers /search, /branch, /title, /handoff commands,
-// session_query tool, and handoff prompt section.
+// session_query and handoff tools, and handoff prompt section.
 package main
 
 import (
@@ -116,7 +116,7 @@ func main() {
 				return nil
 			}
 			focus := strings.TrimSpace(args)
-			if err := sessiontools.Handoff(ctx, e, cwd, focus); err != nil {
+			if err := sessiontools.Handoff(ctx, e, cwd, focus, cfg); err != nil {
 				e.ShowMessage("Handoff failed: " + err.Error())
 			}
 			return nil
@@ -155,6 +155,44 @@ func main() {
 			}
 
 			return sdk.TextResult(result), nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "handoff",
+		Description: "Transfer context to a new session with a structured summary of current work. Use when explicitly asked to hand off, or when the session is very long and a fresh start would help.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"focus": map[string]any{
+					"type":        "string",
+					"description": "Optional focus area or task for the new session",
+				},
+				"reason": map[string]any{
+					"type":        "string",
+					"description": "Why handoff is needed (included in the summary)",
+				},
+			},
+		},
+		PromptHint: "Fork the session with a structured handoff summary",
+		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			if !cfg.Enabled {
+				return sdk.ErrorResult("session handoff is disabled in config"), nil
+			}
+
+			focus, _ := args["focus"].(string)
+			reason, _ := args["reason"].(string)
+			if reason != "" && focus != "" {
+				focus = focus + " (" + reason + ")"
+			} else if reason != "" {
+				focus = reason
+			}
+
+			if err := sessiontools.Handoff(ctx, e, cwd, focus, cfg); err != nil {
+				return sdk.ErrorResult("handoff failed: " + err.Error()), nil
+			}
+
+			return sdk.TextResult("Handoff complete. Context transferred to new session."), nil
 		},
 	})
 

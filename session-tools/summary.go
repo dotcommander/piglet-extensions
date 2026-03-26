@@ -21,22 +21,23 @@ type memoryFact struct {
 
 // BuildSummary reads memory facts for the given cwd and produces a structured
 // markdown handoff summary grouped by category and prefix.
-func BuildSummary(cwd string) (string, error) {
+// It returns the summary text, the raw facts (for caller-side enhance decisions), and any error.
+func BuildSummary(cwd string) (summary string, facts []memoryFact, err error) {
 	path, err := MemoryStorePath(cwd)
 	if err != nil {
-		return "", fmt.Errorf("build summary: %w", err)
+		return "", nil, fmt.Errorf("build summary: %w", err)
 	}
 
-	facts, err := readFacts(path)
+	facts, err = readFacts(path)
 	if err != nil {
-		return "", fmt.Errorf("build summary: %w", err)
+		return "", nil, fmt.Errorf("build summary: %w", err)
 	}
 
 	if len(facts) == 0 {
-		return "No memory facts available for this project.", nil
+		return "No memory facts available for this project.", nil, nil
 	}
 
-	return formatSummary(facts), nil
+	return formatSummary(facts), facts, nil
 }
 
 func readFacts(path string) ([]memoryFact, error) {
