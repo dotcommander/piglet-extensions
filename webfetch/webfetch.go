@@ -9,6 +9,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -66,8 +68,8 @@ func isRecoverable(err error) bool {
 		if httpErr.StatusCode == 0 {
 			return true
 		}
-		// 4xx client errors (except 429) are not recoverable
-		if httpErr.StatusCode >= 400 && httpErr.StatusCode < 500 && httpErr.StatusCode != 429 {
+		// 4xx client errors (except 401, 403, 429) are not recoverable
+		if httpErr.StatusCode >= 400 && httpErr.StatusCode < 500 && httpErr.StatusCode != 401 && httpErr.StatusCode != 403 && httpErr.StatusCode != 429 {
 			return false
 		}
 		// 5xx server errors and 429 rate limits are recoverable
@@ -120,7 +122,11 @@ func NewWithConfig(cfg *Config) *Client {
 	var searchProviders []SearchProvider
 
 	// Always add Jina as the primary provider
-	jina := NewJinaProvider()
+	jinaKey := cfg.JinaAPIKey
+	if jinaKey == "" {
+		jinaKey = os.Getenv("JINA_API_KEY")
+	}
+	jina := NewJinaProvider(jinaKey)
 	fetchProviders = append(fetchProviders, jina)
 	searchProviders = append(searchProviders, jina)
 
@@ -134,6 +140,25 @@ func NewWithConfig(cfg *Config) *Client {
 	if gemini := NewGeminiProvider(cfg.GeminiAPIKey); gemini != nil {
 		fetchProviders = append(fetchProviders, gemini)
 		searchProviders = append(searchProviders, gemini)
+	}
+
+	// Add Brave if API key is configured (search only)
+	braveKey := cfg.BraveAPIKey
+	if braveKey == "" {
+		braveKey = os.Getenv("BRAVE_API_KEY")
+	}
+	if brave := NewBraveProvider(braveKey); brave != nil {
+		searchProviders = append(searchProviders, brave)
+	}
+
+	// Add Exa if API key is configured
+	exaKey := cfg.ExaAPIKey
+	if exaKey == "" {
+		exaKey = os.Getenv("EXA_API_KEY")
+	}
+	if exa := NewExaProvider(exaKey); exa != nil {
+		fetchProviders = append(fetchProviders, exa)
+		searchProviders = append(searchProviders, exa)
 	}
 
 	// Create GitHub client if enabled
@@ -157,7 +182,7 @@ func Default() *Client {
 
 // NewForTest creates a Client with mock Jina providers for testing.
 func NewForTest(readerBase, searchBase string) *Client {
-	jina := NewJinaProviderWithBase(readerBase, searchBase)
+	jina := NewJinaProviderWithBase(readerBase, searchBase, "")
 	return New([]FetchProvider{jina}, []SearchProvider{jina}, nil)
 }
 
@@ -301,7 +326,19 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]SearchR
 		}
 	}
 
-	return nil, fmt.Errorf("all search providers failed: %w", lastErr)
+	// Fallback: fetch a DuckDuckGo search page via reader providers
+	slog.Debug("search providers exhausted, falling back to web fetch", "query", query)
+	ddgURL := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(query)
+	content, err := c.Fetch(ctx, ddgURL, false)
+	if err != nil {
+		return nil, fmt.Errorf("all search providers failed (fetch fallback also failed): %w", lastErr)
+	}
+
+	return []SearchResult{{
+		Title:       "Web search results for: " + query,
+		URL:         ddgURL,
+		Description: content,
+	}}, nil
 }
 
 // FormatResults renders a slice of SearchResults as a markdown list.

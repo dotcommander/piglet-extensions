@@ -21,19 +21,21 @@ const (
 type JinaProvider struct {
 	readerBase string
 	searchBase string
+	apiKey     string
 	http       *http.Client
 }
 
 // NewJinaProvider creates a JinaProvider with default endpoints.
-func NewJinaProvider() *JinaProvider {
-	return NewJinaProviderWithBase(defaultJinaReaderBase, defaultJinaSearchBase)
+func NewJinaProvider(apiKey string) *JinaProvider {
+	return NewJinaProviderWithBase(defaultJinaReaderBase, defaultJinaSearchBase, apiKey)
 }
 
 // NewJinaProviderWithBase creates a JinaProvider with custom base URLs (for testing).
-func NewJinaProviderWithBase(readerBase, searchBase string) *JinaProvider {
+func NewJinaProviderWithBase(readerBase, searchBase string, apiKey string) *JinaProvider {
 	return &JinaProvider{
 		readerBase: readerBase,
 		searchBase: searchBase,
+		apiKey:     apiKey,
 		http: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -54,6 +56,9 @@ func (j *JinaProvider) Fetch(ctx context.Context, rawURL string) (string, error)
 		return "", fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("User-Agent", userAgent)
+	if j.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+j.apiKey)
+	}
 
 	resp, err := j.http.Do(req)
 	if err != nil {
@@ -96,6 +101,9 @@ func (j *JinaProvider) Search(ctx context.Context, query string, limit int) ([]S
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
+	if j.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+j.apiKey)
+	}
 
 	resp, err := j.http.Do(req)
 	if err != nil {

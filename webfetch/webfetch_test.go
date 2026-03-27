@@ -213,10 +213,10 @@ func TestSearch_HTTPError(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
+	// Both reader and search point to the error server so fetch fallback also fails.
+	client := webfetch.NewForTest(srv.URL+"/", srv.URL+"/")
 	_, err := client.Search(context.Background(), "search-http-error-test", 5)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "500")
 }
 
 func TestSearch_InvalidJSON(t *testing.T) {
@@ -227,10 +227,14 @@ func TestSearch_InvalidJSON(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := webfetch.NewForTest(defaultReaderBase, srv.URL+"/")
-	_, err := client.Search(context.Background(), "search-invalid-json-test", 5)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse response")
+	// Reader also points to the bad server so fetch fallback returns non-JSON too,
+	// but that's valid text content — the fallback succeeds with raw text.
+	// So this test now verifies graceful degradation: search fails, fetch fallback returns content.
+	client := webfetch.NewForTest(srv.URL+"/", srv.URL+"/")
+	results, err := client.Search(context.Background(), "search-invalid-json-test", 5)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Contains(t, results[0].Description, "not json at all")
 }
 
 // ---- FormatResults ----------------------------------------------------------

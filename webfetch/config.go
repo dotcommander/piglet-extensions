@@ -14,8 +14,11 @@ import (
 
 // Config holds configuration for webfetch providers.
 type Config struct {
+	JinaAPIKey       string       `yaml:"jina_api_key"`
 	PerplexityAPIKey string       `yaml:"perplexity_api_key"`
 	GeminiAPIKey     string       `yaml:"gemini_api_key"`
+	BraveAPIKey      string       `yaml:"brave_api_key"`
+	ExaAPIKey        string       `yaml:"exa_api_key"`
 	GitHub           GitHubConfig `yaml:"github"`
 }
 
