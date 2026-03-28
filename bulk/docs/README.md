@@ -14,7 +14,7 @@ Runs shell commands across many items (git repos, directories, files, or explici
 |-----------|------|-------------|
 | `source` | enum | Discovery mode: `git_repos`, `dirs`, `files`, `list` |
 | `root` | string | Root directory to scan |
-| `pattern` | string | Glob or directory name pattern (for `dirs`/`files`) |
+| `pattern` | string | Glob pattern (for `dirs`/`files`); supports `**` recursive matching |
 | `list` | string[] | Explicit paths (for `list` source) |
 | `filter` | string | Git condition (`dirty`, `clean`, `ahead`, `behind`, `diverged`) or shell predicate |
 | `command` | string | Shell command to run per item |

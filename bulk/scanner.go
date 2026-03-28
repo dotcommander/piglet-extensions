@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 // Scanner discovers items from a source.
@@ -107,7 +109,7 @@ func (s *GlobScanner) Scan(_ context.Context) ([]Item, error) {
 		pattern = filepath.Join(s.Root, pattern)
 	}
 
-	matches, err := filepath.Glob(pattern)
+	matches, err := doublestar.FilepathGlob(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("glob %q: %w", pattern, err)
 	}

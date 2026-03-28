@@ -3,6 +3,7 @@ module github.com/dotcommander/piglet-extensions
 go 1.26
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/dotcommander/piglet v0.16.11
 	github.com/dotcommander/piglet/sdk v1.3.0
 	github.com/mark3labs/mcp-go v0.45.0
