@@ -4,13 +4,18 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"path/filepath"
 	"strings"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet-extensions/lsp"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/prompt.md
+var defaultPrompt string
 
 var mgr *lsp.Manager
 
@@ -21,23 +26,9 @@ func main() {
 		mgr = lsp.NewManager(x.CWD())
 
 		x.RegisterPromptSection(sdk.PromptSectionDef{
-			Title: "Code Intelligence (LSP)",
-			Content: strings.Join([]string{
-				"Tools: lsp_definition, lsp_references, lsp_hover, lsp_rename, lsp_symbols",
-				"",
-				"These tools provide precise code intelligence via language servers.",
-				"Prefer lsp_definition over grep for finding where functions/types are defined.",
-				"Prefer lsp_references over grep for finding all usages of a symbol.",
-				"Use lsp_hover to get type signatures and documentation.",
-				"Use lsp_rename for safe cross-file symbol renaming.",
-				"",
-				"All tools accept file + line (1-based). Use symbol param instead of column",
-				"when you know the symbol name — the tool finds its column automatically.",
-				"",
-				"Supported languages: Go (gopls), TypeScript/JS, Python, Rust, C/C++, Java, Lua, Zig.",
-				"Language servers must be installed and in PATH.",
-			}, "\n"),
-			Order: 40,
+			Title:   "Code Intelligence (LSP)",
+			Content: xdg.LoadOrCreateFile("lsp-prompt.md", strings.TrimSpace(defaultPrompt)),
+			Order:   40,
 		})
 	})
 

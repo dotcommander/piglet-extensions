@@ -3,13 +3,19 @@
 package main
 
 import (
+	_ "embed"
+
 	"context"
 	"maps"
 	"os/exec"
 	"strings"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/prompt.md
+var defaultPrompt string
 
 func main() {
 	rtkPath, err := exec.LookPath("rtk")
@@ -45,7 +51,7 @@ func main() {
 
 	ext.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "RTK Token Optimization",
-		Content: "Bash commands are automatically optimized by RTK for reduced token output. No action needed.",
+		Content: xdg.LoadOrCreateFile("rtk-prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   90,
 	})
 

@@ -4,12 +4,18 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"log/slog"
+	"strings"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet-extensions/webfetch"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/prompt.md
+var defaultPrompt string
 
 func main() {
 	cfg, err := webfetch.LoadConfig()
@@ -22,7 +28,7 @@ func main() {
 
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Web Access",
-		Content: "You have web_fetch (read URLs) and web_search (search the web) tools available. Only use these when the user explicitly requests web access, asks a question requiring current information beyond your knowledge, or provides a URL to read.",
+		Content: xdg.LoadOrCreateFile("webfetch-prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   85,
 	})
 

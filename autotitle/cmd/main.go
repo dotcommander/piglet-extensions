@@ -1,6 +1,8 @@
 package main
 
 import (
+	_ "embed"
+
 	"context"
 	"encoding/json"
 	"strings"
@@ -10,6 +12,9 @@ import (
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/prompt.md
+var defaultPrompt string
 
 const maxTitleRunes = 50
 const chatTimeout = 10 * time.Second
@@ -88,7 +93,7 @@ func main() {
 }
 
 func ensureDefaultConfig() string {
-	return strings.TrimSpace(xdg.LoadOrCreateFile("autotitle.md", "You generate concise session titles. Given a user-assistant exchange, output a 2-5 word title. No quotes, no punctuation, just the title."))
+	return xdg.LoadOrCreateFile("autotitle.md", strings.TrimSpace(defaultPrompt))
 }
 
 func extractFirstExchange(messages []json.RawMessage) (userText, assistantText string) {

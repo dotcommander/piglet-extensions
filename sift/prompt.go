@@ -2,11 +2,16 @@ package sift
 
 import (
 	"context"
+	_ "embed"
+	"strings"
 	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/prompt.md
+var defaultPrompt string
 
 func LoadPrompt(ext *sdk.Extension) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -17,5 +22,5 @@ func LoadPrompt(ext *sdk.Extension) string {
 		return prompt
 	}
 
-	return xdg.LoadOrCreateFile("sift-prompt.md", "Large tool results are automatically compressed by Sift. Content below 4KB passes through unchanged. Repeated patterns and excessive blank lines are collapsed. If a result shows a [SIFT:] header, the original was larger — request the raw content if you need it.")
+	return xdg.LoadOrCreateFile("sift-prompt.md", strings.TrimSpace(defaultPrompt))
 }

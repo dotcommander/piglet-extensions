@@ -2,11 +2,16 @@ package suggest
 
 import (
 	"context"
+	_ "embed"
+	"strings"
 	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/prompt.md
+var defaultPrompt string
 
 // Config holds suggestion settings.
 type Config struct {
@@ -50,15 +55,5 @@ func LoadPrompt(ext *sdk.Extension) string {
 
 // DefaultPrompt returns the default suggestion prompt template.
 func DefaultPrompt() string {
-	return `You suggest the user's next prompt based on conversation context.
-
-Rules:
-- Output ONE short prompt (max 80 chars)
-- Make it actionable and specific
-- Reference files, functions, or tasks mentioned
-- Skip obvious suggestions ("continue", "done?")
-- If the task appears complete, suggest verification or next logical step
-- If there was an error, suggest a fix or investigation
-
-Output format: Just the prompt text, no quotes, no explanation.`
+	return strings.TrimSpace(defaultPrompt)
 }

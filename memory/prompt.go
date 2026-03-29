@@ -1,9 +1,13 @@
 package memory
 
 import (
+	_ "embed"
 	"fmt"
 	"strings"
 )
+
+//go:embed defaults/tool-preamble.md
+var defaultToolPreamble string
 
 const promptContentCap = 8000
 
@@ -11,7 +15,7 @@ const promptContentCap = 8000
 func BuildMemoryPrompt(store *Store) string {
 	var b strings.Builder
 
-	b.WriteString("Tools: memory_set (save), memory_get (retrieve by key), memory_list (browse all)\n\n")
+	b.WriteString(defaultPreamble() + "\n\n")
 
 	allFacts := store.List("")
 	if len(allFacts) == 0 {
@@ -84,4 +88,8 @@ func BuildMemoryPrompt(store *Store) string {
 	}
 
 	return b.String()
+}
+
+func defaultPreamble() string {
+	return strings.TrimSpace(defaultToolPreamble)
 }

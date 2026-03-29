@@ -3,12 +3,25 @@ package webfetch
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+)
+
+//go:embed defaults/gemini-fetch-prompt.txt
+var rawGeminiFetchPrompt string
+
+//go:embed defaults/gemini-search-prompt.txt
+var rawGeminiSearchPrompt string
+
+var (
+	defaultGeminiFetchPrompt  = strings.TrimSpace(rawGeminiFetchPrompt)
+	defaultGeminiSearchPrompt = strings.TrimSpace(rawGeminiSearchPrompt)
 )
 
 const (
@@ -78,7 +91,7 @@ func (g *GeminiProvider) Fetch(ctx context.Context, rawURL string) (string, erro
 			{
 				Parts: []geminiPart{
 					{
-						Text: fmt.Sprintf("Please extract and summarize the main content from this URL: %s", rawURL),
+						Text: fmt.Sprintf(defaultGeminiFetchPrompt, rawURL),
 					},
 				},
 			},
@@ -146,7 +159,7 @@ func (g *GeminiProvider) Search(ctx context.Context, query string, limit int) ([
 			{
 				Parts: []geminiPart{
 					{
-						Text: fmt.Sprintf("Search for: %s. Provide up to %d results with titles, URLs, and brief descriptions in a structured format.", query, limit),
+						Text: fmt.Sprintf(defaultGeminiSearchPrompt, query, limit),
 					},
 				},
 			},

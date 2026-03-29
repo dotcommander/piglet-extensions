@@ -3,12 +3,25 @@ package webfetch
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+)
+
+//go:embed defaults/fetch-prompt.txt
+var rawFetchPrompt string
+
+//go:embed defaults/search-prompt.txt
+var rawSearchPrompt string
+
+var (
+	defaultFetchPrompt  = strings.TrimSpace(rawFetchPrompt)
+	defaultSearchPrompt = strings.TrimSpace(rawSearchPrompt)
 )
 
 const (
@@ -18,8 +31,8 @@ const (
 
 // PerplexityProvider implements FetchProvider and SearchProvider using Perplexity API.
 type PerplexityProvider struct {
-	apiKey     string
-	http       *http.Client
+	apiKey      string
+	http        *http.Client
 	rateLimiter *rateLimiter
 }
 
@@ -45,7 +58,7 @@ func (p *PerplexityProvider) Name() string {
 }
 
 type perplexityRequest struct {
-	Model    string             `json:"model"`
+	Model    string              `json:"model"`
 	Messages []perplexityMessage `json:"messages"`
 }
 
@@ -77,7 +90,7 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 		Messages: []perplexityMessage{
 			{
 				Role:    "user",
-				Content: fmt.Sprintf("Please extract and summarize the main content from this URL: %s", rawURL),
+				Content: fmt.Sprintf(defaultFetchPrompt, rawURL),
 			},
 		},
 	}
@@ -144,7 +157,7 @@ func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int
 		Messages: []perplexityMessage{
 			{
 				Role:    "user",
-				Content: fmt.Sprintf("Search for: %s. Provide up to %d results with titles, URLs, and brief descriptions.", query, limit),
+				Content: fmt.Sprintf(defaultSearchPrompt, query, limit),
 			},
 		},
 	}

@@ -1,9 +1,13 @@
 package plan
 
 import (
+	_ "embed"
 	"fmt"
 	"strings"
 )
+
+//go:embed defaults/mode-propose.md
+var modeProposeMD string
 
 func FormatPrompt(p *Plan) string {
 	if p == nil {
@@ -14,7 +18,7 @@ func FormatPrompt(p *Plan) string {
 	fmt.Fprintf(&b, "## Active Plan: %s\n\n", p.Title)
 
 	if p.Mode == ModePropose {
-		b.WriteString("**MODE: PROPOSE** — Describe changes as plan steps. Mutating tools (write, edit, bash) are blocked.\n\n")
+		b.WriteString(strings.TrimSpace(modeProposeMD) + "\n\n")
 	}
 
 	// Show resume point if there's an incomplete step

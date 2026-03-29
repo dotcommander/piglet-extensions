@@ -3,14 +3,20 @@
 package main
 
 import (
+	_ "embed"
+
 	"context"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet-extensions/loop"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/prompt.md
+var defaultPrompt string
 
 var scheduler = &loop.Scheduler{}
 
@@ -19,7 +25,7 @@ func main() {
 
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Loop Scheduling",
-		Content: "Use /loop <interval> <prompt> to run a prompt on a recurring interval (e.g. /loop 5m check build status). Use /loop-stop to cancel.",
+		Content: xdg.LoadOrCreateFile("loop-prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   86,
 	})
 

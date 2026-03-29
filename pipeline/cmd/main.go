@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +16,9 @@ import (
 	"github.com/dotcommander/piglet-extensions/pipeline"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/prompt.md
+var defaultPrompt string
 
 const pipelinesDir = "pipelines"
 
@@ -30,18 +34,11 @@ func main() {
 		}
 		configDir = home
 
-		// Load prompt from config
-		promptPath := filepath.Join(configDir, "pipeline", "prompt.md")
-		promptContent, err := os.ReadFile(promptPath)
-		if err != nil {
-			// Create default prompt
-			ensurePromptConfig(filepath.Join(configDir, "pipeline"))
-			promptContent, _ = os.ReadFile(promptPath)
-		}
-		if len(promptContent) > 0 {
+		content := xdg.LoadOrCreateFile("pipeline/prompt.md", strings.TrimSpace(defaultPrompt))
+		if content != "" {
 			ext.RegisterPromptSection(sdk.PromptSectionDef{
 				Title:   "Pipelines",
-				Content: string(promptContent),
+				Content: content,
 				Order:   75,
 			})
 		}
@@ -326,32 +323,4 @@ steps:
 
 	e.ShowMessage(fmt.Sprintf("Created pipeline template at:\n%s\n\nEdit the file, then run: /pipe %s", path, name))
 	return nil
-}
-
-// ensurePromptConfig creates the default prompt config if missing.
-func ensurePromptConfig(dir string) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return
-	}
-	path := filepath.Join(dir, "prompt.md")
-	if _, err := os.Stat(path); err == nil {
-		return
-	}
-
-	content := `Use the pipeline tool to run multi-step workflows. Pipelines are YAML files in ~/.config/piglet/pipelines/.
-
-Features:
-- Sequential steps with output passing ({prev.stdout}, {prev.json.<key>})
-- Parameter defaults and overrides ({param.<name>})
-- Loop constructs: each (list iteration), loop (ranges), cartesian product
-- Retry with backoff, allow_failure, when predicates, per-step timeouts
-- Dry-run mode to preview without executing
-
-Use pipeline_list to discover available pipelines. Use /pipe-new to create templates.`
-
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
-		return
-	}
-	os.Rename(tmp, path)
 }

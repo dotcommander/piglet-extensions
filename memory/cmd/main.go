@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,6 +12,9 @@ import (
 	"github.com/dotcommander/piglet-extensions/memory"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/compact-system.md
+var defaultCompactSystem string
 
 var (
 	store     *memory.Store
@@ -244,7 +248,7 @@ func makeCompactHandler(ext *sdk.Extension, s *memory.Store) func(ctx context.Co
 		// Try to refine with LLM if we have facts
 		if summary != "" {
 			resp, err := ext.Chat(ctx, sdk.ChatRequest{
-				System:   "Given these extracted facts from a coding session, produce a concise structured summary. Group by: files touched, decisions made, errors resolved, current task state. Be brief — 5-10 lines max.",
+				System:   strings.TrimSpace(defaultCompactSystem),
 				Messages: []sdk.ChatMessage{{Role: "user", Content: summary}},
 				Model:    "small",
 			})

@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,15 +14,19 @@ import (
 	"time"
 
 	"github.com/dotcommander/piglet-extensions/bulk"
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+//go:embed defaults/prompt.md
+var defaultPrompt string
 
 func main() {
 	e := sdk.New("bulk", "0.1.0")
 
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Bulk Operations",
-		Content: "Use bulk to run a command across multiple items in parallel. Sources: git_repos (scan for .git/), dirs (match by name/file), files (glob), list (explicit paths). Filters: shell predicates (exit 0 = keep) or git-specific (ahead/behind/dirty/clean/diverged for git_repos). Template vars: {path}, {name}, {dir}, {basename}. Dry-run by default for mutating commands (push, rm, delete, clean, reset).",
+		Content: xdg.LoadOrCreateFile("bulk-prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   80,
 	})
 
