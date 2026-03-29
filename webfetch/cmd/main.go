@@ -22,7 +22,7 @@ func main() {
 
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Web Access",
-		Content: "You have web_fetch (read URLs) and web_search (search the web) tools available.",
+		Content: "You have web_fetch (read URLs) and web_search (search the web) tools available. Only use these when the user explicitly requests web access, asks a question requiring current information beyond your knowledge, or provides a URL to read.",
 		Order:   85,
 	})
 
