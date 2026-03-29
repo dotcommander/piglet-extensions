@@ -7,9 +7,77 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 make extensions              # build all → ~/.config/piglet/extensions/
 make extensions-<name>       # build one, e.g. make extensions-safeguard
+make cli                     # build CLI tools → ~/go/bin/
+make cli-<name>              # build one CLI, e.g. make cli-repomap
 make clean                   # remove installed extensions
 go test ./<name>/...         # test one extension
 go test -run TestFoo ./memory/  # single test
+```
+
+## CLI Tools
+
+Standalone command-line tools built from `cmd/`. Install with `make cli`.
+
+| Tool | Description |
+|------|-------------|
+| `repomap` | Token-budgeted repo structure map with symbols |
+| `pipeline` | Run multi-step YAML workflows with params, loops, retries, and conditionals |
+| `bulk` | Run shell commands across many items (git repos, dirs, files) in parallel |
+| `lspq` | Query language servers (go-to-def, refs, hover, rename, symbols) |
+
+### repomap
+
+```bash
+repomap [flags] [directory]
+  -tokens int     Token budget (default: 2048)
+  -format string  compact|verbose|detail|lines (default: compact)
+  -json           Output as JSON
+```
+
+### pipeline
+
+```bash
+pipeline [flags] <file.yaml>    # run a pipeline
+pipeline list [directory]        # list available pipelines
+  -dry-run          Preview without executing
+  -param key=value  Parameter override (repeatable)
+  -json             JSON output
+  -q                Quiet mode
+```
+
+Pipeline YAML supports: `params` (with defaults/required), `steps` with `run`, `timeout`, `retries`, `retry_delay`, `allow_failure`, `each` (list iteration), `loop` (range/cartesian), `workdir`, `env`, and `when` (conditional). Template vars: `{param.<name>}`, `{prev.stdout}`, `{prev.json.<key>}`, `{step.<name>.stdout}`, `{item}`, `{loop.<key>}`, `{cwd}`, `{date}`, `{timestamp}`.
+
+### bulk
+
+```bash
+bulk [flags] <command>
+  -git              Scan for git repos
+  -dirs             Scan for directories
+  -files            Scan for files by glob
+  -list item1,item2 Explicit paths
+  -root string      Root directory (default: .)
+  -pattern string   Match pattern
+  -filter string    Git filter (dirty/clean/ahead/behind/diverged) or shell predicate
+  -depth int        Scan depth (default: 1)
+  -j int            Concurrency (default: 8)
+  -timeout int      Per-item timeout in seconds (default: 30)
+  -dry-run          Collect and filter without executing
+  -json             JSON output
+```
+
+Template vars in command: `{path}`, `{name}`, `{dir}`, `{basename}`.
+
+### lspq
+
+```bash
+lspq <command> [flags] <file> [line] [symbol]
+  def      Go to definition
+  refs     Find all references
+  hover    Get type info and docs
+  rename   Rename symbol (-to <new-name>)
+  symbols  List all symbols in a file
+  -to string   New name (rename only)
+  -col int     Column (1-based); auto-detected from symbol name
 ```
 
 

@@ -14,6 +14,14 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+// delivererShim wraps *sdk.Extension to satisfy inbox.Deliverer.
+// Steer is not yet in the SDK; fall back to SendMessage.
+type delivererShim struct{ e *sdk.Extension }
+
+func (d *delivererShim) SendMessage(content string) { d.e.SendMessage(content) }
+func (d *delivererShim) Steer(content string)       { d.e.SendMessage(content) }
+func (d *delivererShim) Notify(msg string)           { d.e.Notify(msg) }
+
 func main() {
 	e := sdk.New("inbox", "0.1.0")
 
@@ -34,7 +42,7 @@ func main() {
 				return nil
 			}
 			inboxDir := filepath.Join(dir, "inbox")
-			s := inbox.New(inboxDir, e.CWD(), os.Getpid(), e)
+			s := inbox.New(inboxDir, e.CWD(), os.Getpid(), &delivererShim{e})
 			s.Start(context.Background())
 			scanner.Store(s)
 			return nil
