@@ -24,6 +24,12 @@ Standalone command-line tools built from `cmd/`. Install with `make cli`.
 | `pipeline` | Run multi-step YAML workflows with params, loops, retries, and conditionals |
 | `bulk` | Run shell commands across many items (git repos, dirs, files) in parallel |
 | `lspq` | Query language servers (go-to-def, refs, hover, rename, symbols) |
+| `webfetch` | Fetch URLs as clean markdown or search the web (Jina, Brave, Exa) |
+| `memory` | Per-project key-value fact store (get, set, list, delete) |
+| `sift` | Pipe filter: collapse blanks, repeated lines, truncate large output |
+| `fossil` | Git history queries: blame, changes, ownership, co-change, token-budgeted log |
+| `confirm` | Minimal verify: affected package analysis → scoped typecheck + test + lint |
+| `depgraph` | Dependency graph queries: deps, rdeps, impact, cycles, shortest path |
 
 ### repomap
 
@@ -80,6 +86,73 @@ lspq <command> [flags] <file> [line] [symbol]
   -col int     Column (1-based); auto-detected from symbol name
 ```
 
+### webfetch
+
+```bash
+webfetch [flags] <url>           # fetch URL as markdown
+webfetch search [flags] <query>  # search the web
+  -raw          Fetch directly without reader provider
+  -limit int    Max search results (default: 5)
+  -json         Output as JSON
+```
+
+### memory
+
+```bash
+memory [-dir <path>] [-json] <command> [args]
+  get <key>                    Get a fact
+  set <key> <value> [category] Set a fact
+  list [category]              List all facts
+  delete <key>                 Delete a fact
+  clear                        Clear all facts
+  path                         Print backing file path
+```
+
+### sift
+
+```bash
+sift [flags] < input
+  -threshold int          Minimum size before compression (default: 4096)
+  -max-size int           Maximum output size (default: 32768)
+  -no-collapse-blanks     Disable blank line collapsing
+  -no-collapse-repeats    Disable repeated line collapsing
+```
+
+### fossil
+
+```bash
+fossil <command> [flags] [args]
+  why <file>[:<start>-<end>]    Blame lines with commit messages
+  changes [-since 7d] [-path p] Recent changes summary
+  owners [-limit 10] [path]     Code ownership by commit frequency
+  cochange [-limit 10] <file>   Files that change alongside <file>
+  log [-tokens 1024] [path]     Token-budgeted git log
+  -json                         Output as JSON (all except log)
+```
+
+### confirm
+
+```bash
+confirm [flags] [file ...]
+  --changes file1,file2   Explicit changed files (comma-separated)
+  --no-test               Skip tests
+  --no-lint               Skip lint
+  --json                  JSON output
+```
+
+### depgraph
+
+```bash
+depgraph <command> [flags] [args]
+  deps <package>           Dependencies (what does this import?)
+  rdeps <package>          Reverse deps (what imports this?)
+  impact <file|package>    Blast radius of changes
+  cycles                   Detect circular dependencies
+  path <from> <to>         Shortest dependency path
+  -depth int               Max traversal depth (0=unlimited)
+  -tokens int              Token budget (0=unlimited)
+  -json                    JSON output
+```
 
 ## Architecture
 

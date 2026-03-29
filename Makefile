@@ -16,7 +16,7 @@ endef
 
 $(foreach ext,$(EXTENSION_NAMES),$(eval $(call EXT_RULE,$(ext))))
 
-CLI_NAMES := repomap pipeline bulk lspq
+CLI_NAMES := repomap pipeline bulk confirm depgraph lspq webfetch memory sift fossil
 CLI_DIR := $(HOME)/go/bin
 
 .PHONY: cli $(addprefix cli-,$(CLI_NAMES))
@@ -33,8 +33,26 @@ cli-pipeline:
 cli-bulk:
 	go build -o $(CLI_DIR)/bulk ./cmd/bulk/
 
+cli-confirm:
+	go build -o $(CLI_DIR)/confirm ./cmd/confirm/
+
+cli-depgraph:
+	go build -o $(CLI_DIR)/depgraph ./cmd/depgraph/
+
 cli-lspq:
 	go build -o $(CLI_DIR)/lspq ./cmd/lspq/
+
+cli-webfetch:
+	go build -o $(CLI_DIR)/webfetch ./cmd/webfetch/
+
+cli-memory:
+	go build -o $(CLI_DIR)/memory ./cmd/memory/
+
+cli-sift:
+	go build -o $(CLI_DIR)/sift ./cmd/sift/
+
+cli-fossil:
+	go build -o $(CLI_DIR)/fossil ./cmd/fossil/
 
 clean:
 	@for ext in $(EXTENSION_NAMES); do \
