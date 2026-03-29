@@ -10,7 +10,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 )
 
 //go:embed defaults/gemini-fetch-prompt.txt
@@ -20,9 +23,17 @@ var rawGeminiFetchPrompt string
 var rawGeminiSearchPrompt string
 
 var (
-	defaultGeminiFetchPrompt  = strings.TrimSpace(rawGeminiFetchPrompt)
-	defaultGeminiSearchPrompt = strings.TrimSpace(rawGeminiSearchPrompt)
+	geminiPromptOnce         sync.Once
+	activeGeminiFetchPrompt  string
+	activeGeminiSearchPrompt string
 )
+
+func loadGeminiPrompts() {
+	geminiPromptOnce.Do(func() {
+		activeGeminiFetchPrompt = xdg.LoadOrCreateFile("webfetch-gemini-fetch-prompt.txt", strings.TrimSpace(rawGeminiFetchPrompt))
+		activeGeminiSearchPrompt = xdg.LoadOrCreateFile("webfetch-gemini-search-prompt.txt", strings.TrimSpace(rawGeminiSearchPrompt))
+	})
+}
 
 const (
 	geminiAPIBase = "https://generativelanguage.googleapis.com/v1beta"
@@ -84,6 +95,7 @@ type geminiError struct {
 
 // Fetch retrieves content by asking Gemini to summarize the URL.
 func (g *GeminiProvider) Fetch(ctx context.Context, rawURL string) (string, error) {
+	loadGeminiPrompts()
 	apiURL := fmt.Sprintf("%s/models/%s:generateContent?key=%s", geminiAPIBase, geminiModel, g.apiKey)
 
 	reqBody := geminiRequest{
@@ -91,7 +103,7 @@ func (g *GeminiProvider) Fetch(ctx context.Context, rawURL string) (string, erro
 			{
 				Parts: []geminiPart{
 					{
-						Text: fmt.Sprintf(defaultGeminiFetchPrompt, rawURL),
+						Text: fmt.Sprintf(activeGeminiFetchPrompt, rawURL),
 					},
 				},
 			},
@@ -148,6 +160,8 @@ func (g *GeminiProvider) Fetch(ctx context.Context, rawURL string) (string, erro
 
 // Search queries Gemini for search results.
 func (g *GeminiProvider) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
+	loadGeminiPrompts()
+
 	if limit <= 0 {
 		limit = 5
 	}
@@ -159,7 +173,7 @@ func (g *GeminiProvider) Search(ctx context.Context, query string, limit int) ([
 			{
 				Parts: []geminiPart{
 					{
-						Text: fmt.Sprintf(defaultGeminiSearchPrompt, query, limit),
+						Text: fmt.Sprintf(activeGeminiSearchPrompt, query, limit),
 					},
 				},
 			},

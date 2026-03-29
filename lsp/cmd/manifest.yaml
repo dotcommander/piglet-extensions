@@ -4,3 +4,6 @@ runtime: ./lsp
 capabilities:
   - tools
   - prompt
+defaults:
+  - src: cmd/defaults/prompt.md
+    dest: lsp-prompt.md

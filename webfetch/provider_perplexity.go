@@ -10,7 +10,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 )
 
 //go:embed defaults/fetch-prompt.txt
@@ -20,9 +23,17 @@ var rawFetchPrompt string
 var rawSearchPrompt string
 
 var (
-	defaultFetchPrompt  = strings.TrimSpace(rawFetchPrompt)
-	defaultSearchPrompt = strings.TrimSpace(rawSearchPrompt)
+	perplexityPromptOnce sync.Once
+	activeFetchPrompt    string
+	activeSearchPrompt   string
 )
+
+func loadPerplexityPrompts() {
+	perplexityPromptOnce.Do(func() {
+		activeFetchPrompt = xdg.LoadOrCreateFile("webfetch-fetch-prompt.txt", strings.TrimSpace(rawFetchPrompt))
+		activeSearchPrompt = xdg.LoadOrCreateFile("webfetch-search-prompt.txt", strings.TrimSpace(rawSearchPrompt))
+	})
+}
 
 const (
 	perplexityAPIURL = "https://api.perplexity.ai/chat/completions"
@@ -83,6 +94,7 @@ type perplexityError struct {
 
 // Fetch retrieves content by asking Perplexity to summarize the URL.
 func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, error) {
+	loadPerplexityPrompts()
 	p.rateLimiter.Wait()
 
 	reqBody := perplexityRequest{
@@ -90,7 +102,7 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 		Messages: []perplexityMessage{
 			{
 				Role:    "user",
-				Content: fmt.Sprintf(defaultFetchPrompt, rawURL),
+				Content: fmt.Sprintf(activeFetchPrompt, rawURL),
 			},
 		},
 	}
@@ -146,6 +158,8 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 
 // Search queries Perplexity for search results.
 func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
+	loadPerplexityPrompts()
+
 	if limit <= 0 {
 		limit = 5
 	}
@@ -157,7 +171,7 @@ func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int
 		Messages: []perplexityMessage{
 			{
 				Role:    "user",
-				Content: fmt.Sprintf(defaultSearchPrompt, query, limit),
+				Content: fmt.Sprintf(activeSearchPrompt, query, limit),
 			},
 		},
 	}

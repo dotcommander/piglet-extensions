@@ -4,3 +4,14 @@ runtime: ./webfetch
 capabilities:
   - tools
   - promptSections
+defaults:
+  - src: cmd/defaults/prompt.md
+    dest: webfetch-prompt.md
+  - src: defaults/fetch-prompt.txt
+    dest: webfetch-fetch-prompt.txt
+  - src: defaults/search-prompt.txt
+    dest: webfetch-search-prompt.txt
+  - src: defaults/gemini-fetch-prompt.txt
+    dest: webfetch-gemini-fetch-prompt.txt
+  - src: defaults/gemini-search-prompt.txt
+    dest: webfetch-gemini-search-prompt.txt

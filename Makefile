@@ -1,17 +1,26 @@
 EXTENSIONS_DIR := $(HOME)/.config/piglet/extensions
 
-EXTENSION_NAMES := safeguard rtk autotitle clipboard skill memory subagent lsp repomap plan bulk cache modelsdev mcp usage gitcontext prompts behavior export admin scaffold undo session-tools background extensions-list pipeline webfetch loop inbox sift provider
+EXTENSION_NAMES := safeguard rtk autotitle clipboard skill memory subagent lsp repomap plan bulk cache modelsdev mcp usage gitcontext prompts behavior export admin scaffold undo session-tools background extensions-list pipeline webfetch loop inbox sift provider suggest
 
 .PHONY: extensions clean $(addprefix extensions-,$(EXTENSION_NAMES))
 
 extensions: $(addprefix extensions-,$(EXTENSION_NAMES))
 	@echo "Extensions installed to $(EXTENSIONS_DIR)"
 
+CONFIG_DIR := $(HOME)/.config/piglet
+
 define EXT_RULE
 extensions-$(1):
 	@mkdir -p $(EXTENSIONS_DIR)/$(1)
 	go build -o $(EXTENSIONS_DIR)/$(1)/$(1) ./$(1)/cmd/
 	cp $(1)/cmd/manifest.yaml $(EXTENSIONS_DIR)/$(1)/
+	@awk '/^defaults:/{d=1;next} d&&/^  - src:/{src=$$$$3} d&&/^    dest:/{print src,$$$$2} d&&/^[^ ]/{d=0}' $(1)/cmd/manifest.yaml 2>/dev/null | while read src dest; do \
+		[ -z "$$$$src" ] && continue; \
+		if [ ! -f "$(CONFIG_DIR)/$$$$dest" ]; then \
+			mkdir -p "$$$$(dirname "$(CONFIG_DIR)/$$$$dest")"; \
+			cp "$(1)/$$$$src" "$(CONFIG_DIR)/$$$$dest"; \
+		fi; \
+	done
 endef
 
 $(foreach ext,$(EXTENSION_NAMES),$(eval $(call EXT_RULE,$(ext))))

@@ -5,3 +5,8 @@ capabilities:
   - commands
   - tools
   - prompt
+defaults:
+  - src: defaults/prompt.md
+    dest: session-handoff.md
+  - src: defaults/enhance-prompt.md
+    dest: session-handoff-enhance.md

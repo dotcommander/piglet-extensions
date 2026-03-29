@@ -5,3 +5,6 @@ capabilities:
   - tools
   - commands
   - prompt
+defaults:
+  - src: cmd/defaults/prompt.md
+    dest: pipeline/prompt.md

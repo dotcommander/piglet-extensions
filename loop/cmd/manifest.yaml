@@ -4,3 +4,6 @@ runtime: ./loop
 capabilities:
   - commands
   - promptSections
+defaults:
+  - src: cmd/defaults/prompt.md
+    dest: loop-prompt.md

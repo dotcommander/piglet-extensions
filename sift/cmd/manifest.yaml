@@ -4,3 +4,6 @@ runtime: ./sift
 capabilities:
   - interceptors
   - prompt
+defaults:
+  - src: defaults/prompt.md
+    dest: sift-prompt.md

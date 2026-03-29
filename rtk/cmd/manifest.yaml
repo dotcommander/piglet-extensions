@@ -4,3 +4,6 @@ runtime: ./rtk
 capabilities:
   - interceptors
   - prompt
+defaults:
+  - src: cmd/defaults/prompt.md
+    dest: rtk-prompt.md

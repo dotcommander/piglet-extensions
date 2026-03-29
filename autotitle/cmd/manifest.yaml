@@ -3,3 +3,6 @@ version: 0.1.0
 runtime: ./autotitle
 capabilities:
   - eventHandlers
+defaults:
+  - src: cmd/defaults/prompt.md
+    dest: autotitle.md
