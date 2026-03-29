@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ServerConfig describes how to start a language server.
@@ -86,10 +87,24 @@ func (m *Manager) ForFile(ctx context.Context, file string) (*Client, string, er
 		return c, lang, nil
 	}
 
-	// Check if another goroutine is already starting this server
+	// Wait for a server that's already starting
 	if m.starting[lang] {
-		m.mu.Unlock()
-		return nil, lang, fmt.Errorf("%s language server is starting, retry shortly", lang)
+		for range 3 {
+			m.mu.Unlock()
+			time.Sleep(200 * time.Millisecond)
+			m.mu.Lock()
+			if client, ok := m.clients[lang]; ok {
+				m.mu.Unlock()
+				return client, lang, nil
+			}
+			if !m.starting[lang] {
+				break // startup failed, fall through to start new
+			}
+		}
+		if m.starting[lang] {
+			m.mu.Unlock()
+			return nil, lang, fmt.Errorf("%s language server still starting after retries", lang)
+		}
 	}
 	m.starting[lang] = true
 	m.mu.Unlock()
@@ -185,13 +200,13 @@ func FindSymbolColumn(file string, line int, symbol string) (int, error) {
 	}
 
 	lineText := lines[line]
-	idx := strings.Index(lineText, symbol)
-	if idx < 0 {
+	before, _, ok := strings.Cut(lineText, symbol)
+	if !ok {
 		return 0, fmt.Errorf("symbol %q not found on line %d", symbol, line+1)
 	}
 
 	// Convert byte offset to rune count (close enough for BMP characters)
-	col := len([]rune(lineText[:idx]))
+	col := len([]rune(before))
 	return col, nil
 }
 
