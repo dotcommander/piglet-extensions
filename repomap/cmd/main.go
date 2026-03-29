@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"sync"
 	"time"
@@ -65,7 +66,9 @@ func main() {
 				buildCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				if err := rm.Build(buildCtx); err != nil {
-					x.Log("warn", "repomap background rebuild: "+err.Error())
+					if !errors.Is(err, repomap.ErrNotCodeProject) {
+						x.Log("warn", "repomap background rebuild: "+err.Error())
+					}
 				}
 			}()
 			return
@@ -73,8 +76,9 @@ func main() {
 
 		// No cache — try quick build (5s timeout)
 		quickCtx, quickCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := rm.Build(quickCtx); err == nil {
-			quickCancel()
+		buildErr := rm.Build(quickCtx)
+		quickCancel()
+		if buildErr == nil {
 			setBuilt(true)
 			x.RegisterPromptSection(sdk.PromptSectionDef{
 				Title:   "Repository Map",
@@ -83,7 +87,10 @@ func main() {
 			})
 			return
 		}
-		quickCancel()
+		if errors.Is(buildErr, repomap.ErrNotCodeProject) {
+			x.Log("debug", "skipping repomap: no source files found")
+			return
+		}
 
 		// Slow repo: register empty, build in background
 		x.RegisterPromptSection(sdk.PromptSectionDef{
@@ -116,7 +123,9 @@ func main() {
 				buildCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				if err := rm.Build(buildCtx); err != nil {
-					ext.Log("warn", "repomap rebuild failed: "+err.Error())
+					if !errors.Is(err, repomap.ErrNotCodeProject) {
+						ext.Log("warn", "repomap rebuild failed: "+err.Error())
+					}
 				}
 			}()
 			return nil
@@ -171,8 +180,12 @@ func buildInBackground() {
 
 	start := time.Now()
 	if err := rm.Build(ctx); err != nil {
-		ext.Notify("❌ Scan failed")
-		ext.Log("warn", "repomap background build failed: "+err.Error())
+		if errors.Is(err, repomap.ErrNotCodeProject) {
+			ext.Log("debug", "skipping repomap: no source files found")
+		} else {
+			ext.Notify("❌ Scan failed")
+			ext.Log("warn", "repomap background build failed: "+err.Error())
+		}
 		return
 	}
 

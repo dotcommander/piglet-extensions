@@ -7,51 +7,93 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"regexp"
+	"slices"
 	"strings"
 )
 
 // supportedExts maps file extensions to language IDs.
 var supportedExts = map[string]string{
-	".go":   "go",
-	".ts":   "typescript",
-	".tsx":  "typescript",
-	".js":   "javascript",
-	".jsx":  "javascript",
-	".py":   "python",
-	".rs":   "rust",
-	".c":    "c",
-	".h":    "c",
-	".cpp":  "cpp",
-	".cc":   "cpp",
-	".java": "java",
-	".lua":  "lua",
-	".zig":  "zig",
-	".rb":   "ruby",
+	".go":    "go",
+	".ts":    "typescript",
+	".tsx":   "typescript",
+	".js":    "javascript",
+	".jsx":   "javascript",
+	".py":    "python",
+	".rs":    "rust",
+	".c":     "c",
+	".h":     "c",
+	".cpp":   "cpp",
+	".cc":    "cpp",
+	".java":  "java",
+	".lua":   "lua",
+	".zig":   "zig",
+	".rb":    "ruby",
 	".swift": "swift",
-	".kt":   "kotlin",
-	".php":  "php",
+	".kt":    "kotlin",
+	".php":   "php",
 }
 
 const maxFileSize = 50_000
 
 // skipDirs holds directory names to skip during filesystem walk.
 var skipDirs = map[string]bool{
-	".git":         true,
+	// VCS
+	".git": true,
+
+	// Dependency caches
 	"vendor":       true,
 	"node_modules": true,
 	"__pycache__":  true,
 	".venv":        true,
-	"build":        true,
-	"dist":         true,
-	"target":       true,
-	"_app":         true, // SvelteKit build output
-	".svelte-kit":  true,
-	".next":        true, // Next.js build output
-	".nuxt":        true, // Nuxt build output
-	".output":      true, // Nitro/Nuxt output
-	"out":          true, // common build output
-	"coverage":     true,
+
+	// Build output
+	"build":       true,
+	"dist":        true,
+	"target":      true,
+	"out":         true,
+	"_app":        true, // SvelteKit build output
+	".svelte-kit": true,
+	".next":       true, // Next.js build output
+	".nuxt":       true, // Nuxt build output
+	".output":     true, // Nitro/Nuxt output
+	"coverage":    true,
+
+	// Scratch / temp
+	".work": true,
+	".tmp":  true,
+	"tmp":   true,
+
+	// Caches
+	".cache":        true,
+	".parcel-cache": true, // Parcel bundler
+	".turbo":        true, // Turborepo cache
+	".angular":      true, // Angular cache
+
+	// IDE / tooling config
+	".idea":         true, // JetBrains
+	".vscode":       true, // VS Code
+	".devcontainer": true, // Dev container config
+
+	// Test fixtures
+	"testdata": true, // Go test fixtures
+
+	// Infrastructure tooling
+	".terraform": true, // Terraform state
+
+	// JVM build tools
+	".gradle": true, // Gradle cache
+	".mvn":    true, // Maven wrapper
+
+	// Language-specific package managers
+	".bundle":    true, // Ruby bundler
+	"Pods":       true, // CocoaPods
+	".dart_tool": true, // Dart toolchain
+	".pub-cache": true, // Dart pub cache
+
+	// Codegen output
+	"__generated__":    true, // GraphQL / generic codegen
+	"storybook-static": true, // Storybook build output
 }
 
 // FileInfo holds a discovered file with its language.
@@ -71,8 +113,8 @@ func ScanFiles(ctx context.Context, root string) ([]FileInfo, error) {
 		}
 	}
 
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Path < files[j].Path
+	slices.SortFunc(files, func(a, b FileInfo) int {
+		return strings.Compare(a.Path, b.Path)
 	})
 
 	return files, nil
@@ -111,7 +153,7 @@ func scanGit(ctx context.Context, root string) ([]FileInfo, error) {
 		}
 
 		absPath := filepath.Join(root, line)
-		if tooBig(absPath) || isMinified(line) {
+		if tooBig(absPath) || isBuildArtifact(line) {
 			continue
 		}
 
@@ -145,7 +187,7 @@ func scanWalk(ctx context.Context, root string) ([]FileInfo, error) {
 			return nil
 		}
 
-		if tooBig(path) || isMinified(path) {
+		if tooBig(path) || isBuildArtifact(path) {
 			return nil
 		}
 
@@ -179,10 +221,32 @@ func tooBig(path string) bool {
 	return info.Size() > maxFileSize
 }
 
-// isMinified returns true for files that are likely minified/bundled output.
-func isMinified(path string) bool {
+// bundleHashRe matches a hex hash segment (8+ chars) separated by dots or hyphens,
+// as produced by webpack and other bundlers (e.g. main.a1b2c3d4.js, 4044.62596fd0.chunk.js).
+var bundleHashRe = regexp.MustCompile(`[.\-][0-9a-f]{8,}[.\-]`)
+
+// isBuildArtifact returns true for files that are likely minified, bundled, or generated output.
+func isBuildArtifact(path string) bool {
 	base := filepath.Base(path)
-	return strings.HasSuffix(base, ".min.js") ||
-		strings.HasSuffix(base, ".min.css") ||
-		strings.HasSuffix(base, ".bundle.js")
+	switch {
+	// Minified assets
+	case strings.HasSuffix(base, ".min.js"),
+		strings.HasSuffix(base, ".min.css"):
+		return true
+	// Bundler output
+	case strings.HasSuffix(base, ".bundle.js"),
+		strings.HasSuffix(base, ".chunk.js"),
+		strings.HasSuffix(base, ".chunk.css"):
+		return true
+	// Compiled output (e.g. Wasm glue)
+	case strings.HasSuffix(base, "_compiled.js"):
+		return true
+	// Codegen output
+	case strings.Contains(base, ".generated."):
+		return true
+	// Webpack / bundler content-hash filenames
+	case bundleHashRe.MatchString(base):
+		return true
+	}
+	return false
 }

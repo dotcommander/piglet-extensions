@@ -2,6 +2,7 @@ package repomap
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
@@ -12,6 +13,11 @@ import (
 
 	"golang.org/x/sync/errgroup"
 )
+
+// ErrNotCodeProject is returned by Build when the target directory contains no
+// recognisable source files. Callers should treat this as a normal condition,
+// not an error — the project is simply not a code project.
+var ErrNotCodeProject = errors.New("no source files found")
 
 const (
 	defaultMaxTokens      = 1024
@@ -75,6 +81,9 @@ func (m *Map) Build(ctx context.Context) error {
 	files, err := ScanFiles(ctx, m.root)
 	if err != nil {
 		return err
+	}
+	if len(files) == 0 {
+		return ErrNotCodeProject
 	}
 
 	parsed, mtimes, err := m.parseFiles(ctx, files)
@@ -229,14 +238,17 @@ func (m *Map) parseFiles(ctx context.Context, files []FileInfo) ([]*FileSymbols,
 
 	go func() {
 		defer wg.Done()
-		goResults := make([]*FileSymbols, len(files))
+		goFiles := make([]FileInfo, 0, len(files))
+		for _, fi := range files {
+			if fi.Language == "go" {
+				goFiles = append(goFiles, fi)
+			}
+		}
+		goResults := make([]*FileSymbols, len(goFiles))
 		g, _ := errgroup.WithContext(ctx)
 		g.SetLimit(runtime.NumCPU())
 
-		for i, fi := range files {
-			if fi.Language != "go" {
-				continue
-			}
+		for i, fi := range goFiles {
 			g.Go(func() error {
 				absPath := filepath.Join(m.root, fi.Path)
 				sym, err := ParseGoFile(absPath, m.root)

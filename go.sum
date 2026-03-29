@@ -2,8 +2,8 @@ github.com/bmatcuk/doublestar/v4 v4.10.0 h1:zU9WiOla1YA122oLM6i4EXvGW62DvKZVxIe6
 github.com/bmatcuk/doublestar/v4 v4.10.0/go.mod h1:xBQ8jztBU6kakFMg+8WGxn0c6z1fTSPVIjEY1Wr7jzc=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/dotcommander/piglet v0.16.18 h1:zafWe2ah0YG0MrGXWkwlvyVSu3cjYRorrkVoX26HNqI=
-github.com/dotcommander/piglet v0.16.18/go.mod h1:pypTDyhZwYg3YTFWiidUUahcNsVBFkTICPrTbrBkv0o=
+github.com/dotcommander/piglet v0.16.19 h1:AasRPccybi7GaN3KceJPt5LULWQPolH2laHMa5U2y8s=
+github.com/dotcommander/piglet v0.16.19/go.mod h1:pypTDyhZwYg3YTFWiidUUahcNsVBFkTICPrTbrBkv0o=
 github.com/dotcommander/piglet/sdk v1.3.0 h1:lpADeP7DjBKXfi4jNUJcEZG4aI9EB/E0OcwnDRnVK/s=
 github.com/dotcommander/piglet/sdk v1.3.0/go.mod h1:EtSCs6bUpIpzEpQhyt2POJFoyYO9Ytgm9sinbUsHVEI=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=
