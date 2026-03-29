@@ -9,8 +9,9 @@ import (
 // RankedFile is a FileSymbols with an importance score.
 type RankedFile struct {
 	FileSymbols
-	Score int    // higher = more important
-	Tag   string // e.g. "entry", ""
+	Score       int    // higher = more important
+	Tag         string // e.g. "entry", ""
+	DetailLevel int    // set by BudgetFiles: -1=omit, 0=header, 1=summary, 2=symbols, 3=symbols+fields
 }
 
 // RankFiles scores and sorts files by importance.
@@ -73,7 +74,7 @@ func applyDepthPenalty(ranked []RankedFile) {
 		if depth > 2 {
 			ranked[i].Score -= depth - 2
 		}
-		if strings.HasSuffix(ranked[i].Path, "_test.go") {
+		if isTestFile(ranked[i].Path) {
 			ranked[i].Score -= 5
 		}
 	}

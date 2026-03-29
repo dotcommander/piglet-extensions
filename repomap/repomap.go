@@ -2,10 +2,12 @@ package repomap
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -33,14 +35,18 @@ func DefaultConfig() Config {
 
 // Map holds the built repository map state.
 type Map struct {
-	root        string
-	config      Config
-	mu          sync.RWMutex
-	ranked      []RankedFile
-	output      string
-	outputLines string
-	builtAt     time.Time
-	mtimes      map[string]time.Time // path → mtime at last build
+	root    string
+	config  Config
+	mu      sync.RWMutex
+	ranked  []RankedFile
+	builtAt time.Time
+	mtimes  map[string]time.Time // path → mtime at last build
+
+	// Lazy formatting — nil means not yet computed; set on first access after Build().
+	output        *string
+	outputVerbose *string
+	outputDetail  *string
+	outputLines   *string
 }
 
 // New creates a new Map for the given project root.
@@ -57,7 +63,7 @@ func New(root string, cfg Config) *Map {
 	}
 }
 
-// Build performs a full scan → parse → rank → format pipeline.
+// Build performs a full scan → parse → rank pipeline.
 // Safe for concurrent use.
 func (m *Map) Build(ctx context.Context) error {
 	files, err := ScanFiles(ctx, m.root)
@@ -71,15 +77,16 @@ func (m *Map) Build(ctx context.Context) error {
 	}
 
 	ranked := RankFiles(parsed)
-	output := FormatMap(ranked, m.config.MaxTokens, false, false)
-	outputLines := FormatLines(ranked, m.config.MaxTokensNoCtx, m.root)
 
 	m.mu.Lock()
 	m.ranked = ranked
-	m.output = output
-	m.outputLines = outputLines
 	m.builtAt = time.Now()
 	m.mtimes = mtimes
+	// Reset lazy caches.
+	m.output = nil
+	m.outputVerbose = nil
+	m.outputDetail = nil
+	m.outputLines = nil
 	m.mu.Unlock()
 
 	return nil
@@ -88,40 +95,56 @@ func (m *Map) Build(ctx context.Context) error {
 // String returns the current formatted map output.
 // Returns empty string if Build has not been called or produced no symbols.
 func (m *Map) String() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.output
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.output == nil {
+		s := FormatMap(m.ranked, m.config.MaxTokens, false, false)
+		m.output = &s
+	}
+	return *m.output
 }
 
 // StringVerbose returns the full verbose map output (all symbols, no summarization).
 // Returns empty string if Build has not been called or produced no symbols.
 func (m *Map) StringVerbose() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if len(m.ranked) == 0 {
 		return ""
 	}
-	return FormatMap(m.ranked, 0, true, false) // verbose=true, detail=false
+	if m.outputVerbose == nil {
+		s := FormatMap(m.ranked, 0, true, false)
+		m.outputVerbose = &s
+	}
+	return *m.outputVerbose
 }
 
 // StringDetail returns the full detailed map output with signatures and struct fields.
 // Returns empty string if Build has not been called or produced no symbols.
 func (m *Map) StringDetail() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if len(m.ranked) == 0 {
 		return ""
 	}
-	return FormatMap(m.ranked, 0, true, true) // verbose=true, detail=true
+	if m.outputDetail == nil {
+		s := FormatMap(m.ranked, 0, true, true)
+		m.outputDetail = &s
+	}
+	return *m.outputDetail
 }
 
 // StringLines returns the source-line format showing actual code definitions.
 // More concise than verbose mode, more useful than compact mode.
 // Returns empty string if Build has not been called or produced no symbols.
 func (m *Map) StringLines() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.outputLines
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.outputLines == nil {
+		s := FormatLines(m.ranked, m.config.MaxTokensNoCtx, m.root)
+		m.outputLines = &s
+	}
+	return *m.outputLines
 }
 
 // BuiltAt returns the time of the last successful build, or zero time if never built.
@@ -137,24 +160,37 @@ func (m *Map) BuiltAt() time.Time {
 // Debounced: returns false if last build was <30s ago.
 func (m *Map) Stale() bool {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	builtAt := m.builtAt
+	mtimes := make(map[string]time.Time, len(m.mtimes))
+	maps.Copy(mtimes, m.mtimes)
+	m.mu.RUnlock()
 
-	if m.builtAt.IsZero() {
+	if builtAt.IsZero() {
 		return true
 	}
-	if time.Since(m.builtAt) < stalDebounce {
+	if time.Since(builtAt) < stalDebounce {
 		return false
 	}
-	for path, recorded := range m.mtimes {
-		info, err := os.Stat(path)
-		if err != nil {
-			return true
-		}
-		if info.ModTime().After(recorded) {
-			return true
-		}
+
+	var stale atomic.Bool
+	g := new(errgroup.Group)
+	g.SetLimit(runtime.NumCPU())
+
+	for path, recorded := range mtimes {
+		g.Go(func() error {
+			if stale.Load() {
+				return nil
+			}
+			info, err := os.Stat(path)
+			if err != nil || info.ModTime().After(recorded) {
+				stale.Store(true)
+			}
+			return nil
+		})
 	}
-	return false
+	_ = g.Wait()
+
+	return stale.Load()
 }
 
 // parseFiles parses all discovered files in parallel and returns the symbols
@@ -172,70 +208,93 @@ func (m *Map) parseFiles(ctx context.Context, files []FileInfo) ([]*FileSymbols,
 		mtimes[absPath] = info.ModTime()
 	}
 
-	// Parse Go files in parallel with errgroup.
-	type result struct {
-		symbols *FileSymbols
-	}
-	goResults := make([]result, len(files))
-	g, _ := errgroup.WithContext(ctx)
-	g.SetLimit(runtime.NumCPU())
+	// Parse Go and non-Go files concurrently.
+	var (
+		goParsed    []*FileSymbols
+		nonGoParsed []*FileSymbols
+		wg          sync.WaitGroup
+	)
 
-	for i, fi := range files {
-		if fi.Language != "go" {
-			continue
-		}
-		g.Go(func() error {
-			absPath := filepath.Join(m.root, fi.Path)
-			sym, err := ParseGoFile(absPath, m.root)
-			if err != nil {
-				return nil //nolint:nilerr // skip parse errors
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		goResults := make([]*FileSymbols, len(files))
+		g, _ := errgroup.WithContext(ctx)
+		g.SetLimit(runtime.NumCPU())
+
+		for i, fi := range files {
+			if fi.Language != "go" {
+				continue
 			}
-			goResults[i] = result{symbols: sym}
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, nil, err
-	}
-
-	parsed := make([]*FileSymbols, 0, len(files))
-	for _, r := range goResults {
-		if r.symbols != nil {
-			parsed = append(parsed, r.symbols)
+			g.Go(func() error {
+				absPath := filepath.Join(m.root, fi.Path)
+				sym, err := ParseGoFile(absPath, m.root)
+				if err != nil {
+					return nil //nolint:nilerr // skip parse errors
+				}
+				goResults[i] = sym
+				return nil
+			})
 		}
-	}
+		_ = g.Wait()
+		for _, sym := range goResults {
+			if sym != nil {
+				goParsed = append(goParsed, sym)
+			}
+		}
+	}()
 
-	// Parse non-Go files: ctags batch or regex fallback.
-	if CtagsAvailable() {
-		ctagsParsed, err := ParseWithCtags(ctx, m.root, files)
-		if err == nil {
-			parsed = append(parsed, ctagsParsed...)
+	go func() {
+		defer wg.Done()
+		if CtagsAvailable() {
+			ctagsParsed, err := ParseWithCtags(ctx, m.root, files)
+			if err == nil {
+				nonGoParsed = ctagsParsed
+			} else {
+				nonGoParsed = m.parseGenericFiles(files)
+			}
 		} else {
-			// ctags failed — fall back to regex for non-Go files.
-			parsed = append(parsed, m.parseGenericFiles(files)...)
+			nonGoParsed = m.parseGenericFiles(files)
 		}
-	} else {
-		parsed = append(parsed, m.parseGenericFiles(files)...)
-	}
+	}()
+
+	wg.Wait()
+
+	parsed := make([]*FileSymbols, 0, len(goParsed)+len(nonGoParsed))
+	parsed = append(parsed, goParsed...)
+	parsed = append(parsed, nonGoParsed...)
 
 	return parsed, mtimes, nil
 }
 
-// parseGenericFiles parses non-Go files using regex patterns.
+// parseGenericFiles parses non-Go files using regex patterns in parallel.
 func (m *Map) parseGenericFiles(files []FileInfo) []*FileSymbols {
-	var result []*FileSymbols
-	for _, fi := range files {
+	results := make([]*FileSymbols, len(files))
+	g := new(errgroup.Group)
+	g.SetLimit(runtime.NumCPU())
+
+	for i, fi := range files {
 		if fi.Language == "go" {
 			continue
 		}
-		absPath := filepath.Join(m.root, fi.Path)
-		sym, err := ParseGenericFile(absPath, m.root, fi.Language)
-		if err != nil {
-			continue
-		}
-		result = append(result, sym)
+		g.Go(func() error {
+			absPath := filepath.Join(m.root, fi.Path)
+			sym, err := ParseGenericFile(absPath, m.root, fi.Language)
+			if err != nil {
+				return nil //nolint:nilerr // skip parse errors
+			}
+			results[i] = sym
+			return nil
+		})
 	}
-	return result
-}
+	_ = g.Wait()
 
+	var parsed []*FileSymbols
+	for _, sym := range results {
+		if sym != nil {
+			parsed = append(parsed, sym)
+		}
+	}
+	return parsed
+}

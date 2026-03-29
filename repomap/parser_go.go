@@ -39,11 +39,21 @@ func ParseGoFile(path, root string) (*FileSymbols, error) {
 	}
 
 	// Walk top-level declarations.
+	// For package main, also capture unexported main() and init() as entry points.
+	isMain := fs.Package == "main"
 	for _, decl := range file.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
 			if sym, ok := extractFunc(fset, d); ok {
 				fs.Symbols = append(fs.Symbols, sym)
+			} else if isMain && d.Recv == nil &&
+				(d.Name.Name == "main" || d.Name.Name == "init") {
+				fs.Symbols = append(fs.Symbols, Symbol{
+					Name:     d.Name.Name,
+					Kind:     "function",
+					Exported: false,
+					Line:     fset.Position(d.Name.Pos()).Line,
+				})
 			}
 		case *ast.GenDecl:
 			syms := extractGenDecl(fset, d)
@@ -138,10 +148,10 @@ func isExported(name string) bool {
 
 // parseModuleName extracts the module name from go.mod content.
 func parseModuleName(content string) string {
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "module ") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "module "))
+		if name, ok := strings.CutPrefix(line, "module "); ok {
+			return strings.TrimSpace(name)
 		}
 	}
 	return ""

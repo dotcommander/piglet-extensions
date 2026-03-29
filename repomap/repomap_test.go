@@ -13,6 +13,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// findBenchRoot walks up from cwd to find the repo root (go.mod).
+func findBenchRoot(b *testing.B) string {
+	b.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		b.Fatal(err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			b.Skip("cannot find repo root")
+		}
+		dir = parent
+	}
+}
+
+func BenchmarkBuild(b *testing.B) {
+	root := findBenchRoot(b)
+	for b.Loop() {
+		m := New(root, DefaultConfig())
+		if err := m.Build(context.Background()); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkStale(b *testing.B) {
+	root := findBenchRoot(b)
+	m := New(root, DefaultConfig())
+	if err := m.Build(context.Background()); err != nil {
+		b.Fatal(err)
+	}
+	for b.Loop() {
+		m.Stale()
+	}
+}
+
 // TestLanguageFor checks extension-to-language mapping.
 func TestLanguageFor(t *testing.T) {
 	t.Parallel()
@@ -32,7 +72,6 @@ func TestLanguageFor(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.ext, func(t *testing.T) {
 			t.Parallel()
 			got := LanguageFor(tc.ext)
@@ -164,7 +203,7 @@ func TestRankFiles(t *testing.T) {
 	makeFile := func(path, importPath, pkg string, symCount int, imports []string) *FileSymbols {
 		syms := make([]Symbol, symCount)
 		for i := range syms {
-			syms[i] = Symbol{Name: strings.ToUpper(string(rune('A'+i))), Kind: "function", Exported: true}
+			syms[i] = Symbol{Name: strings.ToUpper(string(rune('A' + i))), Kind: "function", Exported: true}
 		}
 		return &FileSymbols{
 			Path:       path,
@@ -284,8 +323,7 @@ func TestFormatMap(t *testing.T) {
 	assert.Contains(t, out, "[30 refs]")
 
 	// Zero-score file must have no annotation bracket.
-	lines := strings.Split(out, "\n")
-	for _, line := range lines {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(line, "util/misc.go") {
 			assert.NotContains(t, line, "[", "zero-score file must have no annotation")
 		}
@@ -300,7 +338,7 @@ func TestFormatMap_TokenBudget(t *testing.T) {
 	makeRanked := func(path string, score int, n int) RankedFile {
 		syms := make([]Symbol, n)
 		for i := range syms {
-			syms[i] = Symbol{Name: strings.ToUpper(string(rune('A'+i))), Kind: "function"}
+			syms[i] = Symbol{Name: strings.ToUpper(string(rune('A' + i))), Kind: "function"}
 		}
 		return RankedFile{
 			FileSymbols: FileSymbols{Path: path, Symbols: syms},
@@ -452,7 +490,7 @@ func TestFormatMap_Verbose(t *testing.T) {
 	// Create files with many symbols to test summarization vs verbose
 	makeFile := func(path string, nSymbols int) RankedFile {
 		syms := make([]Symbol, nSymbols)
-		for i := 0; i < nSymbols; i++ {
+		for i := range nSymbols {
 			syms[i] = Symbol{Name: fmt.Sprintf("Symbol%d", i), Kind: "function"}
 		}
 		return RankedFile{
@@ -475,4 +513,106 @@ func TestFormatMap_Verbose(t *testing.T) {
 	verbose := FormatMap(files, 8192, true, false)
 	assert.NotContains(t, verbose, "...")
 	assert.Contains(t, verbose, "Symbol9") // Last symbol should be visible
+}
+
+// TestParseGoFile_PackageMain verifies that main() and init() are captured
+// as unexported symbols in package main files.
+func TestParseGoFile_PackageMain(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	goMod := "module example.com/app\ngo 1.22\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644))
+
+	src := `package main
+
+func main() {}
+func init() {}
+func helper() {}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.go"), []byte(src), 0o644))
+
+	fs, err := ParseGoFile(filepath.Join(dir, "main.go"), dir)
+	require.NoError(t, err)
+
+	byName := make(map[string]Symbol, len(fs.Symbols))
+	for _, s := range fs.Symbols {
+		byName[s.Name] = s
+	}
+
+	// main and init must be captured.
+	mainSym, ok := byName["main"]
+	require.True(t, ok, "expected main symbol")
+	assert.Equal(t, "function", mainSym.Kind)
+	assert.False(t, mainSym.Exported, "main must not be marked exported")
+	assert.Greater(t, mainSym.Line, 0, "main must have a line number")
+
+	initSym, ok := byName["init"]
+	require.True(t, ok, "expected init symbol")
+	assert.Equal(t, "function", initSym.Kind)
+	assert.False(t, initSym.Exported, "init must not be marked exported")
+
+	// helper must NOT be captured (only main/init get special treatment).
+	_, hasHelper := byName["helper"]
+	assert.False(t, hasHelper, "helper is unexported and must not be captured")
+}
+
+// TestFormatMap_ZeroSymbolFiles verifies that files with no exported symbols
+// appear in the output with a header-only block.
+func TestFormatMap_ZeroSymbolFiles(t *testing.T) {
+	t.Parallel()
+
+	withSymbols := RankedFile{
+		FileSymbols: FileSymbols{
+			Path:    "core/types.go",
+			Symbols: []Symbol{{Name: "Agent", Kind: "struct"}},
+		},
+		Score: 30,
+	}
+	noSymbols := RankedFile{
+		FileSymbols: FileSymbols{
+			Path:    "cmd/main.go",
+			Package: "main",
+		},
+		Tag:   "entry",
+		Score: 50,
+	}
+
+	files := []RankedFile{noSymbols, withSymbols}
+
+	out := FormatMap(files, 8192, false, false)
+
+	// Header must count all files.
+	assert.Contains(t, out, "2 files", "header must count all files including zero-symbol")
+
+	// Zero-symbol file must appear.
+	assert.Contains(t, out, "cmd/main.go [entry]", "zero-symbol entry point must appear")
+	assert.Contains(t, out, "(package main)", "zero-symbol file must show package info")
+
+	// File with symbols must still appear.
+	assert.Contains(t, out, "core/types.go")
+	assert.Contains(t, out, "Agent")
+}
+
+// TestSummarizeGroup_MethodDedup verifies that methods with the same name
+// on different receivers are displayed with receiver qualification.
+func TestSummarizeGroup_MethodDedup(t *testing.T) {
+	t.Parallel()
+
+	syms := []Symbol{
+		{Name: "Scan", Kind: "method", Receiver: "DirScanner"},
+		{Name: "Scan", Kind: "method", Receiver: "GlobScanner"},
+		{Name: "Scan", Kind: "method", Receiver: "ListScanner"},
+	}
+
+	result := summarizeGroup("methods", syms)
+
+	// Must NOT contain bare "Scan, Scan, Scan".
+	assert.NotContains(t, result, "Scan, Scan, Scan", "duplicate method names must be qualified")
+
+	// Must contain receiver-qualified names.
+	assert.Contains(t, result, "DirScanner.Scan")
+	assert.Contains(t, result, "GlobScanner.Scan")
+	assert.Contains(t, result, "ListScanner.Scan")
 }
