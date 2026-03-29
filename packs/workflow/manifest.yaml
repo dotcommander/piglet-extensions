@@ -1,0 +1,7 @@
+name: pack-workflow
+version: 0.1.0
+runtime: ./pack-workflow
+capabilities:
+  - tools
+  - commands
+  - prompt

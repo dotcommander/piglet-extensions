@@ -1,4 +1,4 @@
-package main
+package autotitle
 
 import (
 	"encoding/json"
@@ -112,7 +112,7 @@ func TestExtractFirstExchange(t *testing.T) {
 	}
 }
 
-func TestTruncate(t *testing.T) {
+func TestTruncateTitle(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -132,7 +132,7 @@ func TestTruncate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := truncate(tt.input, tt.limit)
+			got := truncateTitle(tt.input, tt.limit)
 			assert.Equal(t, tt.want, got)
 		})
 	}

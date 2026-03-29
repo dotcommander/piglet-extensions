@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dotcommander/piglet-extensions/mcp"
 	sdk "github.com/dotcommander/piglet/sdk"
@@ -17,21 +18,31 @@ func main() {
 	var mgr *mcp.Manager
 
 	e.OnInit(func(ext *sdk.Extension) {
+		start := time.Now()
+		ext.Log("debug", "[mcp] OnInit start")
+
 		cfg := mcp.LoadConfig()
 		if len(cfg.Servers) == 0 {
+			ext.Log("debug", fmt.Sprintf("[mcp] OnInit complete — no servers configured (%s)", time.Since(start)))
 			return
 		}
 
+		ext.Log("debug", fmt.Sprintf("[mcp] NewManager start (%s)", time.Since(start)))
 		mgr = mcp.NewManager()
+		ext.Log("debug", fmt.Sprintf("[mcp] NewManager done (%s)", time.Since(start)))
 
 		ctx := context.Background()
+		ext.Log("debug", fmt.Sprintf("[mcp] StartAll start (%s)", time.Since(start)))
 		errs := mgr.StartAll(ctx, cfg.Servers)
+		ext.Log("debug", fmt.Sprintf("[mcp] StartAll done (%s)", time.Since(start)))
 		for _, err := range errs {
 			ext.Log("warn", "mcp: "+err.Error())
 		}
 
 		// Discover and register tools
+		ext.Log("debug", fmt.Sprintf("[mcp] DiscoverTools start (%s)", time.Since(start)))
 		tools := mgr.DiscoverTools(ctx)
+		ext.Log("debug", fmt.Sprintf("[mcp] DiscoverTools done — %d tool(s) (%s)", len(tools), time.Since(start)))
 		for _, t := range tools {
 			registerMCPTool(ext, t)
 		}
@@ -48,6 +59,8 @@ func main() {
 				Order:   80,
 			})
 		}
+
+		ext.Log("debug", fmt.Sprintf("[mcp] OnInit complete (%s)", time.Since(start)))
 	})
 
 	// /mcp command: show server status

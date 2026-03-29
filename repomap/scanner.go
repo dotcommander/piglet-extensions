@@ -102,9 +102,29 @@ type FileInfo struct {
 	Language string // language ID
 }
 
+// isInsideGitRepo reports whether dir is inside a git repository by walking
+// up the directory tree looking for a .git entry.
+func isInsideGitRepo(dir string) bool {
+	for {
+		_, err := os.Stat(filepath.Join(dir, ".git"))
+		if err == nil {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+}
+
 // ScanFiles discovers source files in the given directory.
 // Uses git ls-files when available, falls back to directory walking.
 func ScanFiles(ctx context.Context, root string) ([]FileInfo, error) {
+	if !isInsideGitRepo(root) {
+		return nil, nil
+	}
+
 	files, err := scanGit(ctx, root)
 	if err != nil {
 		files, err = scanWalk(ctx, root)
@@ -178,6 +198,12 @@ func scanWalk(ctx context.Context, root string) ([]FileInfo, error) {
 		if d.IsDir() {
 			if skipDirs[d.Name()] {
 				return filepath.SkipDir
+			}
+			// Skip nested git repos and submodules
+			if path != root {
+				if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
+					return filepath.SkipDir
+				}
 			}
 			return nil
 		}

@@ -12,6 +12,17 @@
 !/bulk/
 /lspq
 !/lspq/
+# Pack binaries
+/agent
+!/agent/
+/code
+!/code/
+/context
+!/context/
+/core
+!/core/
+/workflow
+!/workflow/
 
 # Scratch
 .work/
