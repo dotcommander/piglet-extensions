@@ -17,20 +17,23 @@ func main() {
 		if !modelsdev.CacheStale() {
 			return
 		}
+		// Stale-while-revalidate: models.yaml has last-known-good data.
+		// Refresh in background — never block the initialize handshake.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+			defer cancel()
 
-		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
-		defer cancel()
-
-		updated, err := modelsdev.Refresh(ctx)
-		if err != nil {
-			x.Log("warn", "modelsdev: "+err.Error())
-			return
-		}
-		if updated > 0 {
-			if _, err := x.SyncModels(ctx); err != nil {
-				x.Log("warn", "modelsdev sync: "+err.Error())
+			updated, err := modelsdev.Refresh(ctx)
+			if err != nil {
+				x.Log("warn", "modelsdev: "+err.Error())
+				return
 			}
-		}
+			if updated > 0 {
+				if _, err := x.SyncModels(ctx); err != nil {
+					x.Log("warn", "modelsdev sync: "+err.Error())
+				}
+			}
+		}()
 	})
 
 	e.Run()
