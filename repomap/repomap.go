@@ -16,7 +16,7 @@ import (
 const (
 	defaultMaxTokens      = 1024
 	defaultMaxTokensNoCtx = 2048
-	stalDebounce          = 30 * time.Second
+	staleDebounce         = 30 * time.Second
 )
 
 // Config holds repomap configuration.
@@ -35,12 +35,13 @@ func DefaultConfig() Config {
 
 // Map holds the built repository map state.
 type Map struct {
-	root    string
-	config  Config
-	mu      sync.RWMutex
-	ranked  []RankedFile
-	builtAt time.Time
-	mtimes  map[string]time.Time // path → mtime at last build
+	root     string
+	config   Config
+	cacheDir string // if set, Build saves cache here
+	mu       sync.RWMutex
+	ranked   []RankedFile
+	builtAt  time.Time
+	mtimes   map[string]time.Time // path → mtime at last build
 
 	// Lazy formatting — nil means not yet computed; set on first access after Build().
 	output        *string
@@ -61,6 +62,11 @@ func New(root string, cfg Config) *Map {
 		root:   root,
 		config: cfg,
 	}
+}
+
+// SetCacheDir enables disk caching. Build() will save to this directory.
+func (m *Map) SetCacheDir(dir string) {
+	m.cacheDir = dir
 }
 
 // Build performs a full scan → parse → rank pipeline.
@@ -88,6 +94,10 @@ func (m *Map) Build(ctx context.Context) error {
 	m.outputDetail = nil
 	m.outputLines = nil
 	m.mu.Unlock()
+
+	if m.cacheDir != "" {
+		_ = m.SaveCache(m.cacheDir) // best-effort
+	}
 
 	return nil
 }
@@ -168,7 +178,7 @@ func (m *Map) Stale() bool {
 	if builtAt.IsZero() {
 		return true
 	}
-	if time.Since(builtAt) < stalDebounce {
+	if time.Since(builtAt) < staleDebounce {
 		return false
 	}
 
