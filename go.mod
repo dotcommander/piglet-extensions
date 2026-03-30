@@ -2,6 +2,8 @@ module github.com/dotcommander/piglet-extensions
 
 go 1.26
 
+toolchain go1.26.1
+
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/dotcommander/piglet v0.16.19

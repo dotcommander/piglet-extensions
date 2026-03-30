@@ -13,16 +13,11 @@
 /lspq
 !/lspq/
 # Pack binaries
-/agent
-!/agent/
-/code
-!/code/
-/context
-!/context/
-/core
-!/core/
-/workflow
-!/workflow/
+/pack-core
+/pack-agent
+/pack-context
+/pack-code
+/pack-workflow
 
 # Scratch
 .work/

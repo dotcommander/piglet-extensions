@@ -6,3 +6,4 @@ capabilities:
   - commands
   - prompt
   - messageHooks
+  - eventHandlers

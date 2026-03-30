@@ -16,7 +16,7 @@ var stats *SessionStats
 func Register(e *sdk.Extension) {
 	stats = NewSessionStats()
 
-	e.OnInit(func(x *sdk.Extension) {
+	e.OnInitAppend(func(x *sdk.Extension) {
 		start := time.Now()
 		x.Log("debug", "[usage] OnInit start")
 

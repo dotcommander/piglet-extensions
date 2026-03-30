@@ -63,6 +63,15 @@ cli-sift:
 cli-fossil:
 	go build -o $(CLI_DIR)/fossil ./cmd/fossil/
 
+# Pack targets — install path (single binaries bundling multiple extensions)
+.PHONY: packs
+packs:
+	go build -o pack-core ./packs/core/
+	go build -o pack-agent ./packs/agent/
+	go build -o pack-context ./packs/context/
+	go build -o pack-code ./packs/code/
+	go build -o pack-workflow ./packs/workflow/
+
 clean:
 	@for ext in $(EXTENSION_NAMES); do \
 		rm -rf $(EXTENSIONS_DIR)/$$ext; \

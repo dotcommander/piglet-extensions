@@ -6,3 +6,5 @@ capabilities:
   - commands
   - interceptors
   - prompt
+  - eventHandlers
+  - shortcuts
