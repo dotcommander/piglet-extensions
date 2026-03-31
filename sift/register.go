@@ -11,9 +11,11 @@ import (
 // Register wires the sift extension into a shared SDK extension.
 func Register(e *sdk.Extension) {
 	var cfg Config
+	var projectCWD string
 
 	e.OnInit(func(x *sdk.Extension) {
 		cfg = LoadConfig()
+		projectCWD = x.CWD()
 
 		if !cfg.Enabled {
 			return
@@ -44,7 +46,7 @@ func Register(e *sdk.Extension) {
 				return details, nil
 			}
 
-			compressed := CompressWithTool(toolName, text, cfg)
+			compressed := CompressWithTool(toolName, text, cfg, projectCWD)
 			if compressed == text {
 				return details, nil
 			}

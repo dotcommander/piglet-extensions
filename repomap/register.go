@@ -252,6 +252,9 @@ func Register(e *sdk.Extension) {
 		Parameters:  inventoryParams,
 		PromptHint:  "Query per-file metrics: lines, imports. Use 'scan' to build, 'query' to filter.",
 		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			if extRef == nil {
+				return sdk.TextResult("repomap not initialized"), nil
+			}
 			action, _ := args["action"].(string)
 			filter, _ := args["filter"].(string)
 
@@ -264,7 +267,11 @@ func Register(e *sdk.Extension) {
 				if err := PersistInventory(inv, repomapCacheDir()); err != nil {
 					extRef.Log("warn", "inventory persist failed: "+err.Error())
 				}
-				return sdk.TextResult(formatInventoryTable(inv.Files, fmt.Sprintf("Inventory: %d files (scanned %s)\n\n", len(inv.Files), inv.Scanned))), nil
+				header := fmt.Sprintf("Inventory: %d files (scanned %s)\n\n", len(inv.Files), inv.Scanned)
+				if inv.Truncated {
+					header = fmt.Sprintf("Inventory: %d files — truncated at cap %d (scanned %s)\n\n", len(inv.Files), inventoryFileCap, inv.Scanned)
+				}
+				return sdk.TextResult(formatInventoryTable(inv.Files, header)), nil
 			case "query":
 				out, err := QueryInventory(repomapCacheDir(), filter)
 				if err != nil {

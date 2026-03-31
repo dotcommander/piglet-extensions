@@ -22,9 +22,10 @@ type FileMetrics struct {
 }
 
 type Inventory struct {
-	Files    []FileMetrics `json:"files"`
-	Scanned  string        `json:"scanned"`
-	RootPath string        `json:"root_path"`
+	Files     []FileMetrics `json:"files"`
+	Scanned   string        `json:"scanned"`
+	RootPath  string        `json:"root_path"`
+	Truncated bool          `json:"truncated,omitempty"` // true when file cap was reached
 }
 
 const inventoryFilename = "inventory.json"
@@ -76,6 +77,7 @@ func ScanInventory(ctx context.Context, root string) (*Inventory, error) {
 		}
 		return nil
 	})
+	truncated := err != nil && len(files) > 0 // file cap was hit
 	if err != nil && len(files) == 0 {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
@@ -85,7 +87,7 @@ func ScanInventory(ctx context.Context, root string) (*Inventory, error) {
 		}
 		return files[i].Path < files[j].Path
 	})
-	return &Inventory{Files: files, Scanned: time.Now().Format(time.RFC3339), RootPath: root}, nil
+	return &Inventory{Files: files, Scanned: time.Now().Format(time.RFC3339), RootPath: root, Truncated: truncated}, nil
 }
 
 func countImports(data []byte) int {

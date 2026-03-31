@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-func CompressWithTool(toolName, text string, cfg Config) string {
-	if structured, ok := CompressStructured(toolName, text, cfg); ok {
+func CompressWithTool(toolName, text string, cfg Config, cwd string) string {
+	if structured, ok := CompressStructured(toolName, text, cfg, cwd); ok {
 		return structured
 	}
 	return Compress(text, cfg)

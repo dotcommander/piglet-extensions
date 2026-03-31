@@ -2,13 +2,12 @@ package sift
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
 )
 
-func CompressStructured(toolName, text string, cfg Config) (string, bool) {
+func CompressStructured(toolName, text string, cfg Config, cwd string) (string, bool) {
 	if len(cfg.Structured) == 0 {
 		return "", false
 	}
@@ -18,7 +17,7 @@ func CompressStructured(toolName, text string, cfg Config) (string, bool) {
 		return "", false
 	}
 
-	rows := parseLinterOutput(text, rule.Detect)
+	rows := parseLinterOutput(text, rule.Detect, cwd)
 	if len(rows) == 0 {
 		return "", false
 	}
@@ -54,12 +53,9 @@ var (
 	reFileParen   = regexp.MustCompile(`^(.+?)\((\d+)\):\s+(.+)$`)
 )
 
-func parseLinterOutput(text string, detect string) []row {
+func parseLinterOutput(text, detect, cwd string) []row {
 	lines := strings.Split(text, "\n")
 	var rows []row
-
-	// Resolve cwd once for the entire output — not per line.
-	cwd, _ := os.Getwd()
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)

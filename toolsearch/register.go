@@ -1,3 +1,5 @@
+// Package toolsearch provides a tool_search tool for finding extensions by name.
+// It is registered via packs/code and has no standalone binary.
 package toolsearch
 
 import (

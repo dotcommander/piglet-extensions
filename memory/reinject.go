@@ -2,6 +2,7 @@ package memory
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -39,7 +40,8 @@ func gatherCriticalContext(s *Store) []criticalContext {
 	return items
 }
 
-// filterFacts returns facts whose key starts with the given prefix.
+// filterFacts returns facts whose key starts with the given prefix,
+// sorted by UpdatedAt descending so the most recently updated facts appear first.
 func filterFacts(facts []Fact, prefix string) []Fact {
 	var out []Fact
 	for _, f := range facts {
@@ -47,6 +49,9 @@ func filterFacts(facts []Fact, prefix string) []Fact {
 			out = append(out, f)
 		}
 	}
+	slices.SortFunc(out, func(a, b Fact) int {
+		return b.UpdatedAt.Compare(a.UpdatedAt)
+	})
 	return out
 }
 
