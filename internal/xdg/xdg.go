@@ -23,3 +23,13 @@ func ConfigDir() (string, error) {
 	}
 	return filepath.Join(dir, "piglet"), nil
 }
+
+// ExtensionDir returns the namespaced config directory for the given extension:
+// ~/.config/piglet/extensions/<name>/. Does not create the directory.
+func ExtensionDir(name string) (string, error) {
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "extensions", name), nil
+}
