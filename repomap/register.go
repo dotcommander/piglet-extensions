@@ -22,6 +22,23 @@ var codeChangingTools = map[string]bool{
 	"multi_edit":    true,
 }
 
+// inventoryParams defines parameters for the repomap_inventory tool.
+var inventoryParams = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"action": map[string]any{
+			"type":        "string",
+			"enum":        []string{"scan", "query"},
+			"description": "scan: rebuild inventory from disk. query: filter existing inventory.",
+		},
+		"filter": map[string]any{
+			"type":        "string",
+			"description": "Filter expression for query (e.g. 'lines>100', 'path=internal/')",
+		},
+	},
+	"required": []string{"action"},
+}
+
 // repomapToolParams is shared between repomap_show and repomap_refresh tools.
 var repomapToolParams = map[string]any{
 	"type": "object",
@@ -94,6 +111,11 @@ func Register(e *sdk.Extension) {
 		x.Log("debug", "[repomap] OnInit start")
 
 		extRef = x
+
+		cachedInv := LoadInventory(repomapCacheDir())
+		if cachedInv != nil {
+			x.Log("debug", fmt.Sprintf("[repomap] inventory cache found: %d files", len(cachedInv.Files)))
+		}
 		cfg := loadRepomapConfig()
 		rm = New(x.CWD(), cfg)
 
@@ -223,6 +245,37 @@ func Register(e *sdk.Extension) {
 			return sdk.TextResult(out), nil
 		},
 	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "repomap_inventory",
+		Description: "Scan repository files for metrics (lines, imports) and query the inventory.",
+		Parameters:  inventoryParams,
+		PromptHint:  "Query per-file metrics: lines, imports. Use 'scan' to build, 'query' to filter.",
+		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			action, _ := args["action"].(string)
+			filter, _ := args["filter"].(string)
+
+			switch action {
+			case "scan":
+				inv, err := ScanInventory(ctx, extRef.CWD())
+				if err != nil {
+					return sdk.ErrorResult("scan failed: " + err.Error()), nil
+				}
+				if err := PersistInventory(inv, repomapCacheDir()); err != nil {
+					extRef.Log("warn", "inventory persist failed: "+err.Error())
+				}
+				return sdk.TextResult(formatInventoryTable(inv.Files, fmt.Sprintf("Inventory: %d files (scanned %s)\n\n", len(inv.Files), inv.Scanned))), nil
+			case "query":
+				out, err := QueryInventory(repomapCacheDir(), filter)
+				if err != nil {
+					return sdk.ErrorResult(err.Error()), nil
+				}
+				return sdk.TextResult(out), nil
+			default:
+				return sdk.ErrorResult("unknown action: " + action + " (expected 'scan' or 'query')"), nil
+			}
+		},
+	})
 }
 
 // formatRepomapOutput returns the repomap in the requested format.
@@ -250,7 +303,7 @@ type pigletConfig struct {
 // loadRepomapConfig reads repomap settings from ~/.config/piglet/config.yaml.
 func loadRepomapConfig() Config {
 	cfg := DefaultConfig()
-	pc := xdg.LoadYAML("config.yaml", pigletConfig{})
+	pc := xdg.LoadYAMLExt("repomap", "config.yaml", pigletConfig{})
 
 	if pc.Repomap.MaxTokens > 0 {
 		cfg.MaxTokens = pc.Repomap.MaxTokens

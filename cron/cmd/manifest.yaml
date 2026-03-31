@@ -1,0 +1,10 @@
+name: cron
+version: 0.1.0
+runtime: ./cron
+capabilities:
+  - tools
+  - commands
+  - eventHandlers
+defaults:
+  - src: defaults/schedules.yaml
+    dest: extensions/cron/schedules.yaml

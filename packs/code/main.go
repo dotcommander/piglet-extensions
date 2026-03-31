@@ -7,6 +7,7 @@ import (
 	"github.com/dotcommander/piglet-extensions/repomap"
 	"github.com/dotcommander/piglet-extensions/sift"
 	"github.com/dotcommander/piglet-extensions/suggest"
+	"github.com/dotcommander/piglet-extensions/toolsearch"
 	"github.com/dotcommander/piglet/sdk"
 )
 
@@ -17,5 +18,6 @@ func main() {
 	safety.Register(e, "sift", sift.Register)
 	safety.Register(e, "plan", plan.Register)
 	safety.Register(e, "suggest", suggest.Register)
+	safety.Register(e, "toolsearch", toolsearch.Register)
 	e.Run()
 }

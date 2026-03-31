@@ -78,6 +78,12 @@ func Register(e *sdk.Extension) {
 		},
 	})
 
+	// EventTurnEnd handler — micro-compact old tool results (priority 60, after extractor)
+	registerClearer(e)
+
+	// After interceptor — persist large tool results to disk (priority 30, before sift)
+	registerOverflow(e)
+
 	// Tools
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "memory_set",
@@ -219,6 +225,8 @@ func Register(e *sdk.Extension) {
 	})
 }
 
+// wireMsg wraps a message with a type discriminator for JSON transport.
+// Matches the host's CompactMessage wire format used by ConversationMessages.
 type wireMsg struct {
 	Type string          `json:"type"`
 	Data json.RawMessage `json:"data"`
@@ -283,8 +291,22 @@ func makeCompactHandler(ext *sdk.Extension, s *Store) func(ctx context.Context, 
 
 		// Keep last keepRecent messages, prepend summary
 		kept := params.Messages[len(params.Messages)-keepRecent:]
-		wire := make([]wireMsg, 0, len(kept)+1)
+		wire := make([]wireMsg, 0, len(kept)+2)
 		wire = append(wire, wireMsg{Type: "user", Data: summaryData})
+
+		// Post-compact context re-injection
+		items := gatherCriticalContext(s)
+		reinjectMsg := buildReinjectMessage(items)
+		if reinjectMsg != "" {
+			reinjectData, err := json.Marshal(map[string]any{
+				"role":    "user",
+				"content": reinjectMsg,
+			})
+			if err == nil {
+				wire = append(wire, wireMsg{Type: "user", Data: reinjectData})
+			}
+		}
+
 		wire = append(wire, kept...)
 
 		return json.Marshal(map[string]any{"messages": wire})

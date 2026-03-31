@@ -1,0 +1,9 @@
+name: tokengate
+version: 0.1.0
+runtime: ./tokengate
+capabilities:
+  - interceptors
+  - prompt
+defaults:
+  - src: cmd/defaults/prompt.md
+    dest: extensions/tokengate/prompt.md
