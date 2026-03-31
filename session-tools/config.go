@@ -42,13 +42,13 @@ func DefaultConfig() Config {
 
 // LoadConfig reads config from ~/.config/piglet/session-handoff.yaml, creating defaults if missing.
 func LoadConfig() Config {
-	return xdg.LoadYAML("session-handoff.yaml", DefaultConfig())
+	return xdg.LoadYAMLExt("session-handoff", "session-handoff.yaml", DefaultConfig())
 }
 
 // LoadPromptContent reads the handoff prompt section from ~/.config/piglet/session-handoff.md,
 // creating a default if missing.
 func LoadPromptContent() string {
-	return xdg.LoadOrCreateFile("session-handoff.md", defaultPromptContent())
+	return xdg.LoadOrCreateExt("session-handoff", "prompt.md", defaultPromptContent())
 }
 
 func defaultPromptContent() string {

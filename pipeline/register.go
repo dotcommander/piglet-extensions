@@ -35,7 +35,7 @@ func Register(e *sdk.Extension) {
 		}
 		configDir = home
 
-		content := xdg.LoadOrCreateFile("pipeline/prompt.md", strings.TrimSpace(defaultPrompt))
+		content := xdg.LoadOrCreateExt("pipeline", "prompt.md", strings.TrimSpace(defaultPrompt))
 		if content != "" {
 			ext.RegisterPromptSection(sdk.PromptSectionDef{
 				Title:   "Pipelines",
@@ -48,8 +48,9 @@ func Register(e *sdk.Extension) {
 	})
 
 	e.RegisterTool(sdk.ToolDef{
-		Name:        "pipeline",
-		Description: "Run a multi-step workflow. Load a saved pipeline by name from ~/.config/piglet/pipelines/ or provide an inline pipeline definition. Steps execute sequentially with output passing, retries, loops, and error handling.",
+		Name:              "pipeline",
+		Description:       "Run a multi-step workflow. Load a saved pipeline by name from ~/.config/piglet/pipelines/ or provide an inline pipeline definition. Steps execute sequentially with output passing, retries, loops, and error handling.",
+		InterruptBehavior: "block",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

@@ -18,11 +18,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// configDir returns the piglet config directory (~/.config/piglet).
-func configDir() (string, error) {
-	return xdg.ConfigDir()
-}
-
 // CompilePatterns compiles string patterns into case-insensitive regexps.
 // Invalid patterns are silently skipped.
 func CompilePatterns(patterns []string) []*regexp.Regexp {
@@ -123,13 +118,16 @@ type auditEntry struct {
 	Detail    string `json:"detail,omitempty"`
 }
 
-// NewAuditLogger opens or creates the audit log file.
+// NewAuditLogger opens or creates the audit log file in the extension directory.
 func NewAuditLogger() *AuditLogger {
-	dir, err := configDir()
+	dir, err := xdg.ExtensionDir("safeguard")
 	if err != nil {
 		return nil
 	}
 	path := filepath.Join(dir, "safeguard-audit.jsonl")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil
+	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil
@@ -175,8 +173,9 @@ func LoadPatterns() []string {
 }
 
 // LoadConfig reads the full safeguard configuration.
+// Tries the namespaced extension directory first, falls back to flat config dir.
 func LoadConfig() Config {
-	dir, err := configDir()
+	dir, err := xdg.ExtensionDir("safeguard")
 	if err != nil {
 		return Config{Profile: ProfileBalanced, Patterns: defaultPatterns()}
 	}
@@ -184,11 +183,25 @@ func LoadConfig() Config {
 	path := filepath.Join(dir, "safeguard.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			patterns := createDefault(path)
-			return Config{Profile: ProfileBalanced, Patterns: patterns}
+		if !os.IsNotExist(err) {
+			return Config{Profile: ProfileBalanced, Patterns: defaultPatterns()}
 		}
-		return Config{Profile: ProfileBalanced, Patterns: defaultPatterns()}
+		// Fallback: try flat location
+		flatDir, flatErr := xdg.ConfigDir()
+		if flatErr != nil {
+			return Config{Profile: ProfileBalanced, Patterns: defaultPatterns()}
+		}
+		flatPath := filepath.Join(flatDir, "safeguard.yaml")
+		data, err = os.ReadFile(flatPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				patterns := createDefault(path)
+				return Config{Profile: ProfileBalanced, Patterns: patterns}
+			}
+			return Config{Profile: ProfileBalanced, Patterns: defaultPatterns()}
+		}
+		// Migrate from flat to namespaced
+		_ = xdg.WriteFileAtomic(path, data)
 	}
 
 	var cfg Config
@@ -204,13 +217,17 @@ func LoadConfig() Config {
 func createDefault(path string) []string {
 	dir := filepath.Dir(path)
 
-	// Read the seed from safeguard-default.yaml next to config
-	seedPath := filepath.Join(dir, "safeguard-default.yaml")
-	if _, err := os.Stat(seedPath); err == nil {
-		// Seed exists — copy it
+	// Read the seed from safeguard-default.yaml — check namespaced dir first, then flat
+	seedPaths := []string{
+		filepath.Join(dir, "safeguard-default.yaml"),
+	}
+	if flatDir, err := xdg.ConfigDir(); err == nil {
+		seedPaths = append(seedPaths, filepath.Join(flatDir, "safeguard-default.yaml"))
+	}
+	for _, seedPath := range seedPaths {
 		data, err := os.ReadFile(seedPath)
 		if err == nil {
-			_ = os.WriteFile(path, data, 0600)
+			_ = xdg.WriteFileAtomic(path, data)
 			var cfg Config
 			if yaml.Unmarshal(data, &cfg) == nil {
 				return cfg.Patterns
@@ -232,8 +249,7 @@ func createDefault(path string) []string {
 	b.WriteString("# Edit patterns below. Set safeguard: false in config.yaml to disable entirely.\n\n")
 	b.Write(data)
 
-	_ = os.MkdirAll(filepath.Dir(path), 0700)
-	_ = os.WriteFile(path, []byte(b.String()), 0600)
+	_ = xdg.WriteFileAtomic(path, []byte(b.String()))
 
 	return patterns
 }

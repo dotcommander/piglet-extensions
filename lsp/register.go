@@ -50,7 +50,7 @@ func Register(e *sdk.Extension) {
 
 		x.RegisterPromptSection(sdk.PromptSectionDef{
 			Title:   "Code Intelligence (LSP)",
-			Content: xdg.LoadOrCreateFile("lsp-prompt.md", strings.TrimSpace(defaultPrompt)),
+			Content: xdg.LoadOrCreateExt("lsp", "prompt.md", strings.TrimSpace(defaultPrompt)),
 			Order:   40,
 		})
 

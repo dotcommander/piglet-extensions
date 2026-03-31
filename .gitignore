@@ -40,3 +40,7 @@ repomix-output.md
 
 # Override global cache/ ignore — this directory is a Go package, not a build artifact
 !cache/
+
+# Additional CLI and pack binaries
+/piglet-cron
+/pack-cron

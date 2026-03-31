@@ -5,4 +5,4 @@ capabilities:
   - tools
 defaults:
   - src: cmd/defaults/prompt.md
-    dest: bulk-prompt.md
+    dest: extensions/bulk/prompt.md

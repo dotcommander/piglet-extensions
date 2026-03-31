@@ -5,4 +5,4 @@ capabilities:
   - eventHandlers
 defaults:
   - src: defaults/prompt.md
-    dest: suggest.md
+    dest: extensions/suggest/prompt.md

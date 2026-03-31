@@ -7,8 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
@@ -19,12 +19,12 @@ const (
 
 // Register adds subagent's dispatch tool to the extension.
 func Register(e *sdk.Extension) {
-	var promptOnce sync.Once
-	var prompt string
+	prompt := xdg.LoadOrCreateExt("subagent", "prompt.md", "")
 
 	e.RegisterTool(sdk.ToolDef{
-		Name:        "dispatch",
-		Description: "Delegate a task to an independent sub-agent that runs to completion and returns results. Use for research, analysis, or any task that benefits from focused execution with its own context.",
+		Name:              "dispatch",
+		Description:       "Delegate a task to an independent sub-agent that runs to completion and returns results. Use for research, analysis, or any task that benefits from focused execution with its own context.",
+		InterruptBehavior: "block",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -39,11 +39,6 @@ func Register(e *sdk.Extension) {
 		},
 		PromptHint: "Delegate focused tasks to independent sub-agents for research, analysis, or exploration",
 		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			// Lazy-load prompt (cannot call host during OnInit — deadlock)
-			promptOnce.Do(func() {
-				prompt, _ = e.ConfigReadExtension(ctx, "subagent")
-			})
-
 			task, _ := args["task"].(string)
 			if task == "" {
 				return sdk.ErrorResult("task is required"), nil

@@ -30,8 +30,8 @@ var (
 
 func loadGeminiPrompts() {
 	geminiPromptOnce.Do(func() {
-		activeGeminiFetchPrompt = xdg.LoadOrCreateFile("webfetch-gemini-fetch-prompt.txt", strings.TrimSpace(rawGeminiFetchPrompt))
-		activeGeminiSearchPrompt = xdg.LoadOrCreateFile("webfetch-gemini-search-prompt.txt", strings.TrimSpace(rawGeminiSearchPrompt))
+		activeGeminiFetchPrompt = xdg.LoadOrCreateExt("webfetch", "gemini-fetch-prompt.txt", strings.TrimSpace(rawGeminiFetchPrompt))
+		activeGeminiSearchPrompt = xdg.LoadOrCreateExt("webfetch", "gemini-search-prompt.txt", strings.TrimSpace(rawGeminiSearchPrompt))
 	})
 }
 

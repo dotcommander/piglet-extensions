@@ -7,4 +7,4 @@ capabilities:
   - prompt
 defaults:
   - src: cmd/defaults/prompt.md
-    dest: pipeline/prompt.md
+    dest: extensions/pipeline/prompt.md

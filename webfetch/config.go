@@ -22,36 +22,40 @@ type Config struct {
 	GitHub           GitHubConfig `yaml:"github"`
 }
 
-// LoadConfig reads configuration from ~/.config/piglet/webfetch.yaml.
-// If the file doesn't exist, it creates one with default values.
+// LoadConfig reads configuration from the namespaced extension directory
+// (~/.config/piglet/extensions/webfetch/webfetch.yaml), falling back to the
+// flat location (~/.config/piglet/webfetch.yaml) for backward compatibility.
+// If neither exists, it creates one with default values in the namespaced directory.
 func LoadConfig() (*Config, error) {
-	configDir, err := xdg.ConfigDir()
+	extDir, err := xdg.ExtensionDir("webfetch")
 	if err != nil {
-		return nil, fmt.Errorf("get config dir: %w", err)
+		return nil, fmt.Errorf("get extension dir: %w", err)
 	}
+	extPath := filepath.Join(extDir, "webfetch.yaml")
 
-	configPath := filepath.Join(configDir, "webfetch.yaml")
-
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(extPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			// Create default config file
-			defaultConfig := &Config{
-				GitHub: GitHubConfig{
-					Enabled:        true,
-					SkipLargeRepos: true,
-				},
-			}
-			data, err := yaml.Marshal(defaultConfig)
-			if err != nil {
-				return nil, fmt.Errorf("marshal default config: %w", err)
-			}
-			if err := xdg.WriteFileAtomic(configPath, data); err != nil {
-				return nil, fmt.Errorf("create default config: %w", err)
-			}
-			return defaultConfig, nil
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read config: %w", err)
 		}
-		return nil, fmt.Errorf("read config: %w", err)
+		// Fallback: try flat location
+		configDir, dirErr := xdg.ConfigDir()
+		if dirErr != nil {
+			return nil, fmt.Errorf("get config dir: %w", dirErr)
+		}
+		flatPath := filepath.Join(configDir, "webfetch.yaml")
+		data, err = os.ReadFile(flatPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// Neither exists — create default in namespaced dir
+				return createDefaultConfig(extPath)
+			}
+			return nil, fmt.Errorf("read config: %w", err)
+		}
+		// Migrate from flat to namespaced
+		if err := os.MkdirAll(extDir, 0o755); err == nil {
+			_ = xdg.WriteFileAtomic(extPath, data)
+		}
 	}
 
 	var cfg Config
@@ -63,6 +67,26 @@ func LoadConfig() (*Config, error) {
 	// Don't override explicit false values from config.
 
 	return &cfg, nil
+}
+
+func createDefaultConfig(path string) (*Config, error) {
+	defaultConfig := &Config{
+		GitHub: GitHubConfig{
+			Enabled:        true,
+			SkipLargeRepos: true,
+		},
+	}
+	data, err := yaml.Marshal(defaultConfig)
+	if err != nil {
+		return nil, fmt.Errorf("marshal default config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("create extension dir: %w", err)
+	}
+	if err := xdg.WriteFileAtomic(path, data); err != nil {
+		return nil, fmt.Errorf("create default config: %w", err)
+	}
+	return defaultConfig, nil
 }
 
 // rateLimiter implements a simple rate limiter for API calls.

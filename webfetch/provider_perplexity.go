@@ -30,8 +30,8 @@ var (
 
 func loadPerplexityPrompts() {
 	perplexityPromptOnce.Do(func() {
-		activeFetchPrompt = xdg.LoadOrCreateFile("webfetch-fetch-prompt.txt", strings.TrimSpace(rawFetchPrompt))
-		activeSearchPrompt = xdg.LoadOrCreateFile("webfetch-search-prompt.txt", strings.TrimSpace(rawSearchPrompt))
+		activeFetchPrompt = xdg.LoadOrCreateExt("webfetch", "fetch-prompt.txt", strings.TrimSpace(rawFetchPrompt))
+		activeSearchPrompt = xdg.LoadOrCreateExt("webfetch", "search-prompt.txt", strings.TrimSpace(rawSearchPrompt))
 	})
 }
 

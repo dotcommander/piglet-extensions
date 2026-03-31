@@ -15,7 +15,7 @@ var defaultEnhanceMD string
 // EnhanceSummary refines a template summary via LLM.
 // Returns the original unchanged if the call fails.
 func EnhanceSummary(ctx context.Context, ext *sdk.Extension, templateSummary string, cfg Config) string {
-	system := xdg.LoadOrCreateFile("session-handoff-enhance.md", defaultEnhancePrompt())
+	system := xdg.LoadOrCreateExt("session-handoff", "enhance-prompt.md", defaultEnhancePrompt())
 
 	resp, err := ext.Chat(ctx, sdk.ChatRequest{
 		System: system,

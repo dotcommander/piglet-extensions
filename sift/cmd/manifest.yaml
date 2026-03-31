@@ -6,4 +6,4 @@ capabilities:
   - prompt
 defaults:
   - src: defaults/prompt.md
-    dest: sift-prompt.md
+    dest: extensions/sift/prompt.md

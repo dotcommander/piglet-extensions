@@ -2,9 +2,8 @@
 package autotitle
 
 import (
-	_ "embed"
-
 	"context"
+	_ "embed"
 	"encoding/json"
 	"strings"
 	"sync/atomic"
@@ -26,7 +25,6 @@ const (
 // Register adds autotitle's event handler to the extension.
 func Register(e *sdk.Extension) {
 	var fired atomic.Bool
-	var prompt atomic.Value // lazy-loaded from config on first event
 
 	e.RegisterEventHandler(sdk.EventHandlerDef{
 		Name:     "autotitle",
@@ -42,18 +40,9 @@ func Register(e *sdk.Extension) {
 				}
 			}()
 
-			// Lazy-load prompt on first fire (cannot call host during OnInit — deadlock)
-			p, _ := prompt.Load().(string)
+			p := xdg.LoadOrCreateExt("autotitle", "prompt.md", strings.TrimSpace(defaultPrompt))
 			if p == "" {
-				loaded, _ := e.ConfigReadExtension(context.Background(), "autotitle")
-				if loaded == "" {
-					loaded = ensureDefaultConfig()
-				}
-				if loaded == "" {
-					return nil
-				}
-				prompt.Store(loaded)
-				p = loaded
+				return nil
 			}
 
 			var evt struct {
@@ -90,10 +79,6 @@ func Register(e *sdk.Extension) {
 			return nil
 		},
 	})
-}
-
-func ensureDefaultConfig() string {
-	return xdg.LoadOrCreateFile("autotitle.md", strings.TrimSpace(defaultPrompt))
 }
 
 func extractFirstExchange(messages []json.RawMessage) (userText, assistantText string) {

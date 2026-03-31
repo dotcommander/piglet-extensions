@@ -25,7 +25,7 @@ func Register(e *sdk.Extension) {
 
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Web Access",
-		Content: xdg.LoadOrCreateFile("webfetch-prompt.md", strings.TrimSpace(defaultPrompt)),
+		Content: xdg.LoadOrCreateExt("webfetch", "prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   85,
 	})
 

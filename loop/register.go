@@ -21,7 +21,7 @@ func Register(e *sdk.Extension) {
 
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Loop Scheduling",
-		Content: xdg.LoadOrCreateFile("loop-prompt.md", strings.TrimSpace(defaultPrompt)),
+		Content: xdg.LoadOrCreateExt("loop", "prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   86,
 	})
 

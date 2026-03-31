@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+func CompressWithTool(toolName, text string, cfg Config) string {
+	if structured, ok := CompressStructured(toolName, text, cfg); ok {
+		return structured
+	}
+	return Compress(text, cfg)
+}
+
 func Compress(text string, cfg Config) string {
 	if len(text) < cfg.SizeThreshold {
 		return text

@@ -19,7 +19,7 @@ func Register(e *sdk.Extension) {
 	e.OnInit(func(x *sdk.Extension) {
 		cwd.Store(x.CWD())
 		cfg := LoadConfig()
-		prompt := LoadPrompt(x)
+		prompt := LoadPrompt()
 		s = NewSuggester(cfg, prompt, x)
 	})
 

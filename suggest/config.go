@@ -1,13 +1,11 @@
 package suggest
 
 import (
-	"context"
 	_ "embed"
 	"strings"
 	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
-	sdk "github.com/dotcommander/piglet/sdk"
 )
 
 //go:embed defaults/prompt.md
@@ -37,20 +35,13 @@ func DefaultConfig() Config {
 
 // LoadConfig loads config from ~/.config/piglet/suggest.yaml, creating defaults if missing.
 func LoadConfig() Config {
-	return xdg.LoadYAML("suggest.yaml", DefaultConfig())
+	return xdg.LoadYAMLExt("suggest", "suggest.yaml", DefaultConfig())
 }
 
-// LoadPrompt loads the prompt template from ~/.config/piglet/suggest.md, creating default if missing.
-func LoadPrompt(ext *sdk.Extension) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	prompt, err := ext.ConfigReadExtension(ctx, "suggest")
-	if err == nil && prompt != "" {
-		return prompt
-	}
-
-	return xdg.LoadOrCreateFile("suggest.md", DefaultPrompt())
+// LoadPrompt loads the prompt template from the extension's namespaced directory,
+// creating the default if missing.
+func LoadPrompt() string {
+	return xdg.LoadOrCreateExt("suggest", "prompt.md", DefaultPrompt())
 }
 
 // DefaultPrompt returns the default suggestion prompt template.

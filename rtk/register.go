@@ -49,7 +49,7 @@ func Register(e *sdk.Extension) {
 
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "RTK Token Optimization",
-		Content: xdg.LoadOrCreateFile("rtk-prompt.md", strings.TrimSpace(defaultPrompt)),
+		Content: xdg.LoadOrCreateExt("rtk", "prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   90,
 	})
 }

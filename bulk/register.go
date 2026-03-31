@@ -21,13 +21,14 @@ var defaultPrompt string
 func Register(e *sdk.Extension) {
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Bulk Operations",
-		Content: xdg.LoadOrCreateFile("bulk-prompt.md", strings.TrimSpace(defaultPrompt)),
+		Content: xdg.LoadOrCreateExt("bulk", "prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   80,
 	})
 
 	e.RegisterTool(sdk.ToolDef{
-		Name:        "bulk",
-		Description: "Run a shell command across multiple items (directories, files, git repos) in parallel. Discovers items, optionally filters, executes command, returns structured results.",
+		Name:              "bulk",
+		Description:       "Run a shell command across multiple items (directories, files, git repos) in parallel. Discovers items, optionally filters, executes command, returns structured results.",
+		InterruptBehavior: "block",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

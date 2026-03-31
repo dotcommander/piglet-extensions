@@ -3,10 +3,10 @@
 package behavior
 
 import (
-	"context"
 	"fmt"
 	"time"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
@@ -19,7 +19,7 @@ func Register(e *sdk.Extension) {
 		start := time.Now()
 		ext.Log("debug", "[behavior] OnInit start")
 
-		content, _ := ext.ConfigReadExtension(context.Background(), "behavior")
+		content := xdg.LoadOrCreateExt("behavior", "behavior.md", "")
 		if content == "" {
 			ext.Log("debug", fmt.Sprintf("[behavior] OnInit complete — no content (%s)", time.Since(start)))
 			return

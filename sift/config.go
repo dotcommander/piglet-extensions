@@ -11,12 +11,21 @@ type CompressionConfig struct {
 	TruncationMarker        string `yaml:"truncation_marker"`
 }
 
+type StructuredRule struct {
+	Tool    string   `yaml:"tool"`
+	Detect  string   `yaml:"detect"`
+	Columns []string `yaml:"columns"`
+	MaxRows int      `yaml:"max_rows"`
+	SortBy  string   `yaml:"sort_by"`
+}
+
 type Config struct {
 	Enabled       bool              `yaml:"enabled"`
 	SizeThreshold int               `yaml:"size_threshold"`
 	MaxSize       int               `yaml:"max_size"`
 	Tools         []string          `yaml:"tools"`
 	Compression   CompressionConfig `yaml:"compression"`
+	Structured    []StructuredRule  `yaml:"structured"`
 }
 
 func DefaultConfig() Config {
@@ -31,9 +40,29 @@ func DefaultConfig() Config {
 			StripTrailingWhitespace: true,
 			TruncationMarker:        "\n[SIFT: truncated — {kept}/{total} bytes shown]",
 		},
+		Structured: []StructuredRule{
+			{
+				Tool:    "Bash",
+				Detect:  "golangci-lint",
+				Columns: []string{"file", "line", "linter", "message"},
+				MaxRows: 25,
+			},
+			{
+				Tool:    "Bash",
+				Detect:  "go vet",
+				Columns: []string{"file", "line", "message"},
+				MaxRows: 25,
+			},
+			{
+				Tool:    "Bash",
+				Detect:  "staticcheck",
+				Columns: []string{"file", "line", "message"},
+				MaxRows: 25,
+			},
+		},
 	}
 }
 
 func LoadConfig() Config {
-	return xdg.LoadYAML("sift.yaml", DefaultConfig())
+	return xdg.LoadYAMLExt("sift", "sift.yaml", DefaultConfig())
 }

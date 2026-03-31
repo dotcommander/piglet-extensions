@@ -4,11 +4,9 @@ package mcp
 
 import (
 	"os"
-	"path/filepath"
 	"regexp"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
-	"gopkg.in/yaml.v3"
 )
 
 // ServerConfig describes a single MCP server connection.
@@ -26,23 +24,12 @@ type Config struct {
 	Servers map[string]ServerConfig `yaml:"servers"`
 }
 
-// LoadConfig reads MCP server configuration from ~/.config/piglet/mcp.yaml.
-// Returns nil servers if the file doesn't exist or is empty.
+// LoadConfig reads MCP server configuration from the namespaced extension
+// directory (~/.config/piglet/extensions/mcp/mcp.yaml), falling back to the
+// flat location (~/.config/piglet/mcp.yaml) for backward compatibility.
+// Returns empty Config if the file doesn't exist or is unparseable.
 func LoadConfig() *Config {
-	dir, err := xdg.ConfigDir()
-	if err != nil {
-		return &Config{}
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, "mcp.yaml"))
-	if err != nil {
-		return &Config{}
-	}
-
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return &Config{}
-	}
+	cfg := xdg.LoadYAMLExt("mcp", "mcp.yaml", Config{})
 	return &cfg
 }
 

@@ -6,4 +6,4 @@ capabilities:
   - prompt
 defaults:
   - src: cmd/defaults/prompt.md
-    dest: rtk-prompt.md
+    dest: extensions/rtk/prompt.md
