@@ -130,7 +130,8 @@ func executeWebhook(ctx context.Context, task TaskConfig) ExecuteResult {
 		req.Header.Set(k, v)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return ExecuteResult{Error: fmt.Sprintf("request failed: %s", err)}
 	}

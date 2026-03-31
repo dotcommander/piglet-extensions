@@ -12,6 +12,8 @@ import (
 	"time"
 
 	sdk "github.com/dotcommander/piglet/sdk"
+
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 )
 
 // Register registers the cron extension's commands, tools, and event handlers.
@@ -60,7 +62,7 @@ func handleCronList(e *sdk.Extension) error {
 		return nil
 	}
 	if len(summaries) == 0 {
-		e.ShowMessage("No tasks configured. Edit ~/.config/piglet/schedules.yaml to add tasks.")
+		e.ShowMessage("No tasks configured. Edit ~/.config/piglet/extensions/cron/schedules.yaml to add tasks.")
 		return nil
 	}
 
@@ -206,7 +208,7 @@ func handleCronHistory(e *sdk.Extension, name string) error {
 }
 
 func handleCronAdd(e *sdk.Extension) error {
-	e.ShowMessage("Edit `~/.config/piglet/schedules.yaml` to add tasks.\nSee the file for examples and documentation.")
+	e.ShowMessage("Edit `~/.config/piglet/extensions/cron/schedules.yaml` to add tasks.\nSee the file for examples and documentation.")
 	return nil
 }
 
@@ -553,8 +555,13 @@ func plistPath() string {
 }
 
 func generatePlist(binPath string) string {
-	home, _ := os.UserHomeDir()
-	logDir := filepath.Join(home, ".config", "piglet", "logs")
+	configDir, err := xdg.ConfigDir()
+	if err != nil {
+		// Fall back to a sensible default if config dir is unavailable.
+		home, _ := os.UserHomeDir()
+		configDir = filepath.Join(home, ".config", "piglet")
+	}
+	logDir := filepath.Join(configDir, "logs")
 	os.MkdirAll(logDir, 0o755) //nolint:errcheck // best-effort log dir creation
 
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>

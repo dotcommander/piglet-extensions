@@ -43,7 +43,6 @@ type ScheduleSpec struct {
 	Every   string `yaml:"every"`    // duration string: "10m", "1h"
 	DailyAt string `yaml:"daily_at"` // "HH:MM" in local time
 	Weekly  string `yaml:"weekly"`   // "monday 09:00"
-	Cron    string `yaml:"cron"`     // standard 5-field cron expression
 }
 
 // DefaultConfig returns an empty config (no tasks).

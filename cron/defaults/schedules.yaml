@@ -3,7 +3,7 @@
 #
 # Each task has:
 #   action: shell | prompt | webhook
-#   schedule: every | daily_at | weekly | cron
+#   schedule: every | daily_at | weekly
 #   timeout: duration (default 5m)
 #   enabled: true | false (default true)
 #

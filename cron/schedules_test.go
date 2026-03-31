@@ -107,7 +107,6 @@ func TestParseSchedule(t *testing.T) {
 		{"bad daily", ScheduleSpec{DailyAt: "25:00"}, "", true},
 		{"bad weekly day", ScheduleSpec{Weekly: "notaday 09:00"}, "", true},
 		{"empty", ScheduleSpec{}, "", true},
-		{"cron not implemented", ScheduleSpec{Cron: "*/5 * * * *"}, "", true},
 	}
 
 	for _, tt := range tests {

@@ -27,9 +27,9 @@ type RunEntry struct {
 
 // historyPath returns the full path to cron-history.jsonl.
 func historyPath() (string, error) {
-	dir, err := xdg.ConfigDir()
+	dir, err := xdg.ExtensionDir("cron")
 	if err != nil {
-		return "", fmt.Errorf("resolve config dir: %w", err)
+		return "", fmt.Errorf("resolve cron dir: %w", err)
 	}
 	return filepath.Join(dir, historyFile), nil
 }

@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // RunOptions configures a cron run.
@@ -86,20 +88,21 @@ func Run(ctx context.Context, opts RunOptions) error {
 		return nil
 	}
 
-	// Execute due tasks in parallel.
-	var wg sync.WaitGroup
-	results := make(chan taskResult, len(toRun))
+	// Execute due tasks in parallel — all run to completion regardless of failures.
+	var mu sync.Mutex
+	collected := make([]taskResult, 0, len(toRun))
 
+	eg, egCtx := errgroup.WithContext(ctx)
 	for _, tr := range toRun {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		eg.Go(func() error {
 			defer func() {
 				if r := recover(); r != nil {
-					results <- taskResult{
+					mu.Lock()
+					collected = append(collected, taskResult{
 						name:   tr.name,
 						result: ExecuteResult{Error: fmt.Sprintf("panic: %v", r)},
-					}
+					})
+					mu.Unlock()
 				}
 			}()
 
@@ -107,18 +110,17 @@ func Run(ctx context.Context, opts RunOptions) error {
 				slog.Info("running", "task", tr.name, "action", tr.config.Action)
 			}
 
-			results <- taskResult{name: tr.name, result: Execute(ctx, tr.name, tr.config)}
-		}()
+			res := Execute(egCtx, tr.name, tr.config)
+			mu.Lock()
+			collected = append(collected, taskResult{name: tr.name, result: res})
+			mu.Unlock()
+			return nil // never cancel siblings on task failure
+		})
 	}
-
-	// Close results channel once all goroutines finish.
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
+	eg.Wait() //nolint:errcheck // always nil — goroutines never return non-nil
 
 	var appendErr error
-	for r := range results {
+	for _, r := range collected {
 		entry := RunEntry{
 			Task:       r.name,
 			RanAt:      nowFunc().Format(time.RFC3339),

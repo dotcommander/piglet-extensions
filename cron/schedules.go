@@ -162,11 +162,8 @@ func ParseSchedule(spec ScheduleSpec) (Schedule, error) {
 		}
 		return WeeklySchedule{Weekday: weekday, Hour: hour, Minute: minute}, nil
 
-	case spec.Cron != "":
-		return nil, fmt.Errorf("cron expressions not yet implemented")
-
 	default:
-		return nil, fmt.Errorf("no schedule specified (need every, daily_at, weekly, or cron)")
+		return nil, fmt.Errorf("no schedule specified (need every, daily_at, or weekly)")
 	}
 }
 
