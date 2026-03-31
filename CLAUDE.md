@@ -30,6 +30,7 @@ Standalone command-line tools built from `cmd/`. Install with `make cli`.
 | `fossil` | Git history queries: blame, changes, ownership, co-change, token-budgeted log |
 | `confirm` | Minimal verify: affected package analysis → scoped typecheck + test + lint |
 | `depgraph` | Dependency graph queries: deps, rdeps, impact, cycles, shortest path |
+| `piglet-cron` | Run scheduled cron tasks (daemon mode for launchd) |
 
 ### repomap
 
@@ -153,6 +154,16 @@ depgraph <command> [flags] [args]
   -tokens int              Token budget (0=unlimited)
   -json                    JSON output
 ```
+
+### piglet-cron
+
+```bash
+piglet-cron run [flags]
+  --verbose, -v   Enable info-level logging to stderr
+  --task NAME     Run a specific task by name (implies force run, skips schedule check)
+```
+
+Intended for launchd: acquire a process lock on startup, run due tasks, then exit. Another instance running is not an error (exits 0).
 
 ## Architecture
 
