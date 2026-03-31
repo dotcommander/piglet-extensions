@@ -8,6 +8,7 @@ import (
 )
 
 func TestTruncate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		input    string
@@ -42,6 +43,7 @@ func TestTruncate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := truncate(tt.input, tt.maxRunes)
 			assert.Equal(t, tt.want, got)
 		})
@@ -49,6 +51,7 @@ func TestTruncate(t *testing.T) {
 }
 
 func TestFilter(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultConfig()
 	s := NewSuggester(cfg, "", nil)
 
@@ -98,6 +101,7 @@ func TestFilter(t *testing.T) {
 }
 
 func TestFilterDuplicates(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultConfig()
 	s := NewSuggester(cfg, "", nil)
 
@@ -115,6 +119,7 @@ func TestFilterDuplicates(t *testing.T) {
 }
 
 func TestShouldSuggest(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultConfig()
 	cfg.Cooldown = 2
 	cfg.Enabled = true
@@ -137,6 +142,7 @@ func TestShouldSuggest(t *testing.T) {
 }
 
 func TestShouldSuggestDisabled(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultConfig()
 	cfg.Enabled = false
 	s := NewSuggester(cfg, "", nil)
@@ -145,6 +151,7 @@ func TestShouldSuggestDisabled(t *testing.T) {
 }
 
 func TestExtractAssistantText(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		input string
@@ -179,6 +186,7 @@ func TestExtractAssistantText(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := extractAssistantText(json.RawMessage(tt.input))
 			assert.Equal(t, tt.want, got)
 		})
@@ -186,6 +194,7 @@ func TestExtractAssistantText(t *testing.T) {
 }
 
 func TestTurnDataToolNames(t *testing.T) {
+	t.Parallel()
 	turn := TurnData{
 		ToolResults: []ToolResult{
 			{ToolName: "Read"},
@@ -199,10 +208,11 @@ func TestTurnDataToolNames(t *testing.T) {
 }
 
 func TestTurnDataHasError(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name  string
-		turn  TurnData
-		want  bool
+		name string
+		turn TurnData
+		want bool
 	}{
 		{
 			name: "no error",
@@ -232,12 +242,14 @@ func TestTurnDataHasError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, tt.turn.HasError())
 		})
 	}
 }
 
 func TestDefaultConfig(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultConfig()
 
 	assert.Equal(t, "small", cfg.Model)
@@ -248,6 +260,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestDefaultPrompt(t *testing.T) {
+	t.Parallel()
 	prompt := DefaultPrompt()
 
 	assert.Contains(t, prompt, "suggest")
