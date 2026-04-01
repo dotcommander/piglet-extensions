@@ -33,11 +33,17 @@ func ReadImage() (*ImageData, error) {
 		return nil, fmt.Errorf("no image in clipboard")
 	}
 
-	pbCmd := exec.Command("osascript", "-e",
-		`set imageData to the clipboard as «class PNGf»
-set theFile to (open for access POSIX file "/dev/stdout" with write permission)
-write imageData to theFile
-close access theFile`)
+	clipClass := "«class PNGf»"
+	if mime == "image/jpeg" {
+		clipClass = "«class JPEG»"
+	}
+
+	script := fmt.Sprintf(
+		"set imageData to the clipboard as %s\n"+
+			"set theFile to (open for access POSIX file \"/dev/stdout\" with write permission)\n"+
+			"write imageData to theFile\n"+
+			"close access theFile", clipClass)
+	pbCmd := exec.Command("osascript", "-e", script)
 	data, err := pbCmd.Output()
 	if err != nil || len(data) == 0 {
 		return nil, fmt.Errorf("failed to read image from clipboard")
