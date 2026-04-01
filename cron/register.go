@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/template"
 	"time"
 
 	sdk "github.com/dotcommander/piglet/sdk"
@@ -62,7 +64,11 @@ func handleCronList(e *sdk.Extension) error {
 		return nil
 	}
 	if len(summaries) == 0 {
-		e.ShowMessage("No tasks configured. Edit ~/.config/piglet/extensions/cron/schedules.yaml to add tasks.")
+		if schedDir, err := xdg.ExtensionDir("cron"); err == nil {
+			e.ShowMessage("No tasks configured. Edit " + filepath.Join(schedDir, "schedules.yaml") + " to add tasks.")
+		} else {
+			e.ShowMessage("No tasks configured. Add tasks via the schedules.yaml config file.")
+		}
 		return nil
 	}
 
@@ -208,7 +214,11 @@ func handleCronHistory(e *sdk.Extension, name string) error {
 }
 
 func handleCronAdd(e *sdk.Extension) error {
-	e.ShowMessage("Edit `~/.config/piglet/extensions/cron/schedules.yaml` to add tasks.\nSee the file for examples and documentation.")
+	if schedDir, err := xdg.ExtensionDir("cron"); err == nil {
+		e.ShowMessage("Edit `" + filepath.Join(schedDir, "schedules.yaml") + "` to add tasks.\nSee the file for examples and documentation.")
+	} else {
+		e.ShowMessage("Add tasks via the schedules.yaml config file. See the file for examples and documentation.")
+	}
 	return nil
 }
 
@@ -554,6 +564,9 @@ func plistPath() string {
 	return filepath.Join(home, "Library", "LaunchAgents", "com.piglet.cron.plist")
 }
 
+//go:embed defaults/launchd.plist
+var plistTmpl string
+
 func generatePlist(binPath string) string {
 	configDir, err := xdg.ConfigDir()
 	if err != nil {
@@ -564,25 +577,11 @@ func generatePlist(binPath string) string {
 	logDir := filepath.Join(configDir, "logs")
 	os.MkdirAll(logDir, 0o755) //nolint:errcheck // best-effort log dir creation
 
-	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.piglet.cron</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>%s</string>
-        <string>run</string>
-    </array>
-    <key>StartInterval</key>
-    <integer>60</integer>
-    <key>StandardOutPath</key>
-    <string>%s/cron.log</string>
-    <key>StandardErrorPath</key>
-    <string>%s/cron.log</string>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>`, binPath, logDir, logDir)
+	tmpl := template.Must(template.New("plist").Parse(plistTmpl))
+	var b strings.Builder
+	_ = tmpl.Execute(&b, map[string]string{
+		"BinPath": binPath,
+		"LogDir":  logDir,
+	})
+	return b.String()
 }
