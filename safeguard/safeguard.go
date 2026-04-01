@@ -68,7 +68,11 @@ func BlockerWithConfig(cfg Config, compiled []*regexp.Regexp, cwd string, audit 
 				for _, re := range compiled {
 					if re.MatchString(command) {
 						audit.Log(toolName, "blocked", re.String(), truncate(command, 200))
-						return false, nil, fmt.Errorf("safeguard: blocked dangerous command matching %q — edit ~/.config/piglet/safeguard.yaml to adjust", re.String())
+						configPath := "safeguard.yaml"
+						if dir, err := xdg.ExtensionDir("safeguard"); err == nil {
+							configPath = filepath.Join(dir, "safeguard.yaml")
+						}
+						return false, nil, fmt.Errorf("safeguard: blocked dangerous command matching %q — edit %s to adjust", re.String(), configPath)
 					}
 				}
 			}

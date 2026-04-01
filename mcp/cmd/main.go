@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet-extensions/mcp"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
@@ -69,7 +70,11 @@ func main() {
 		Description: "Show MCP server connection status",
 		Handler: func(ctx context.Context, _ string) error {
 			if mgr == nil {
-				e.ShowMessage("No MCP servers configured. Add servers to ~/.config/piglet/mcp.yaml")
+				if cfgDir, err := xdg.ExtensionDir("mcp"); err == nil {
+					e.ShowMessage("No MCP servers configured. Add servers to " + cfgDir + "/mcp.yaml")
+				} else {
+					e.ShowMessage("No MCP servers configured. Add servers to your mcp.yaml config file.")
+				}
 				return nil
 			}
 
