@@ -1,110 +1,124 @@
-// Package subagent provides the subagent dispatch tool for piglet.
+// Package subagent provides the tmux-based agent dispatch tool for piglet.
+// Agents are spawned as full piglet instances in tmux panes, giving the user
+// full visibility and intervention capability.
 package subagent
 
 import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/dotcommander/piglet-extensions/internal/xdg"
+	"github.com/google/uuid"
+
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
-const (
-	envDepth   = "PIGLET_SUBAGENT_DEPTH"
-	defaultMax = 2
-)
-
-// Register adds subagent's dispatch tool to the extension.
+// Register adds the dispatch tool to the extension.
 func Register(e *sdk.Extension) {
-	prompt := xdg.LoadOrCreateExt("subagent", "prompt.md", "")
-
 	e.RegisterTool(sdk.ToolDef{
-		Name:              "dispatch",
-		Description:       "Delegate a task to an independent sub-agent that runs to completion and returns results. Use for research, analysis, or any task that benefits from focused execution with its own context.",
-		InterruptBehavior: "block",
+		Name:        "dispatch",
+		Description: "Spawn a piglet agent in a tmux pane to handle a task independently. The agent runs as a full piglet instance with complete tool access and streaming visibility. The user can observe and intervene via the tmux pane. Results are returned when the agent completes.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"task":      map[string]any{"type": "string", "description": "Task instructions for the sub-agent"},
-				"context":   map[string]any{"type": "string", "description": "Additional context to include in the sub-agent's system prompt"},
-				"tools":     map[string]any{"type": "string", "enum": []any{"read_only", "all"}, "description": "Tool access level (default: read_only)"},
-				"max_turns": map[string]any{"type": "integer", "description": "Maximum turns for the sub-agent"},
-				"model":     map[string]any{"type": "string", "description": "Model override (e.g. anthropic/claude-haiku-4-5)"},
-				"prefer":    map[string]any{"type": "string", "enum": []any{"default", "small"}, "description": "Model preference: default (main model) or small (cheaper model for background tasks)"},
+				"task":  map[string]any{"type": "string", "description": "Task instructions for the agent"},
+				"model": map[string]any{"type": "string", "description": "Model override (e.g. --model anthropic/claude-haiku-4-5)"},
+				"split": map[string]any{"type": "string", "enum": []any{"horizontal", "vertical", "window"}, "description": "Tmux layout: horizontal split (default), vertical split, or new window"},
 			},
 			"required": []any{"task"},
 		},
-		PromptHint: "Delegate focused tasks to independent sub-agents for research, analysis, or exploration",
+		PromptHint: "Spawn an independent agent in a tmux pane for focused research, analysis, or parallel work",
 		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
 			task, _ := args["task"].(string)
 			if task == "" {
 				return sdk.ErrorResult("task is required"), nil
 			}
 
-			// Depth guard: prevent runaway nesting
-			depth := 0
-			if d, err := strconv.Atoi(os.Getenv(envDepth)); err == nil && d > 0 {
-				depth = d
+			// Verify tmux is available and we're inside a session
+			if os.Getenv("TMUX") == "" {
+				return sdk.ErrorResult("dispatch requires tmux — run piglet inside a tmux session"), nil
 			}
-			maxDepth := defaultMax
-			if m, err := strconv.Atoi(os.Getenv("PIGLET_SUBAGENT_MAX_DEPTH")); err == nil && m > 0 {
-				maxDepth = m
-			}
-			if depth >= maxDepth {
-				return sdk.ErrorResult(fmt.Sprintf("subagent nesting limit reached (depth %d >= max %d). Decompose the task or increase PIGLET_SUBAGENT_MAX_DEPTH", depth, maxDepth)), nil
+			if _, err := exec.LookPath("tmux"); err != nil {
+				return sdk.ErrorResult("tmux not found in PATH"), nil
 			}
 
-			// Propagate depth+1 to child via env (restored after call)
-			prevDepth := os.Getenv(envDepth)
-			os.Setenv(envDepth, strconv.Itoa(depth+1))
-			defer os.Setenv(envDepth, prevDepth)
-
-			system := prompt
-			if extra, _ := args["context"].(string); extra != "" {
-				system = system + "\n\n" + extra
+			// Create result directory
+			agentID := uuid.New().String()[:8]
+			tmpDir := filepath.Join(os.TempDir(), "piglet-agent-"+agentID)
+			if err := os.MkdirAll(tmpDir, 0700); err != nil {
+				return sdk.ErrorResult(fmt.Sprintf("create agent dir: %v", err)), nil
 			}
 
-			// Resolve tools filter
-			tools := "background_safe"
-			if access, _ := args["tools"].(string); access == "all" {
-				tools = "all"
+			resultPath := filepath.Join(tmpDir, "result.md")
+
+			// Build piglet command
+			var cmdParts []string
+			cmdParts = append(cmdParts, "piglet")
+			if model, _ := args["model"].(string); model != "" {
+				cmdParts = append(cmdParts, "--result", resultPath, "--model", model)
+			} else {
+				cmdParts = append(cmdParts, "--result", resultPath)
+			}
+			// Quote the task for shell safety
+			cmdParts = append(cmdParts, fmt.Sprintf("%q", task))
+
+			pigletCmd := strings.Join(cmdParts, " ")
+
+			// Wrap: run piglet, then hold pane open briefly so user can see result
+			shellCmd := fmt.Sprintf("%s; echo ''; echo '[agent %s complete — press enter to close]'; read", pigletCmd, agentID)
+
+			// Determine tmux split mode
+			split, _ := args["split"].(string)
+			var tmuxArgs []string
+			switch split {
+			case "vertical":
+				tmuxArgs = []string{"split-window", "-v", shellCmd}
+			case "window":
+				tmuxArgs = []string{"new-window", "-n", "agent-" + agentID, shellCmd}
+			default: // horizontal (default)
+				tmuxArgs = []string{"split-window", "-h", shellCmd}
 			}
 
-			// Resolve model
-			model := "default"
-			if m, _ := args["model"].(string); m != "" {
-				model = m
-			} else if prefer, _ := args["prefer"].(string); prefer == "small" {
-				model = "small"
+			// Spawn the tmux pane
+			cmd := exec.CommandContext(ctx, "tmux", tmuxArgs...)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				_ = os.RemoveAll(tmpDir)
+				return sdk.ErrorResult(fmt.Sprintf("tmux spawn failed: %v: %s", err, string(out))), nil
 			}
 
-			maxTurns := 10
-			if mt, ok := args["max_turns"].(float64); ok && int(mt) > 0 {
-				maxTurns = int(mt)
-			}
+			// Poll for result file (agent writes it on completion)
+			timeout := 5 * time.Minute
+			deadline := time.Now().Add(timeout)
+			pollInterval := 500 * time.Millisecond
 
-			resp, err := e.RunAgent(ctx, sdk.AgentRequest{
-				System:   system,
-				Task:     task,
-				Tools:    tools,
-				Model:    model,
-				MaxTurns: maxTurns,
-			})
-			if err != nil {
-				return sdk.ErrorResult("agent error: " + err.Error()), nil
-			}
+			for {
+				select {
+				case <-ctx.Done():
+					return sdk.ErrorResult("dispatch cancelled"), nil
+				default:
+				}
 
-			if resp.Text == "" {
-				return sdk.TextResult("[sub-agent completed with no text output]"), nil
-			}
+				if time.Now().After(deadline) {
+					return sdk.TextResult(fmt.Sprintf("[agent %s timed out after %s — check tmux pane for status]", agentID, timeout)), nil
+				}
 
-			var b strings.Builder
-			fmt.Fprintf(&b, "[sub-agent: %d turns, %dk in / %dk out tokens]\n\n", resp.Turns, resp.Usage.Input/1000, resp.Usage.Output/1000)
-			b.WriteString(resp.Text)
-			return sdk.TextResult(b.String()), nil
+				if data, err := os.ReadFile(resultPath); err == nil {
+					// Clean up temp dir
+					_ = os.RemoveAll(tmpDir)
+
+					result := strings.TrimSpace(string(data))
+					if result == "" {
+						return sdk.TextResult(fmt.Sprintf("[agent %s completed with no output]", agentID)), nil
+					}
+					return sdk.TextResult(fmt.Sprintf("[agent %s]\n\n%s", agentID, result)), nil
+				}
+
+				time.Sleep(pollInterval)
+			}
 		},
 	})
 }
