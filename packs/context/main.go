@@ -9,6 +9,7 @@ import (
 	"github.com/dotcommander/piglet-extensions/packs/internal/safety"
 	"github.com/dotcommander/piglet-extensions/prompts"
 	"github.com/dotcommander/piglet-extensions/recall"
+	"github.com/dotcommander/piglet-extensions/route"
 	sessiontools "github.com/dotcommander/piglet-extensions/session-tools"
 	"github.com/dotcommander/piglet-extensions/skill"
 	"github.com/dotcommander/piglet/sdk"
@@ -25,5 +26,6 @@ func main() {
 	safety.Register(e, "inbox", inbox.Register)
 	safety.Register(e, "distill", distill.Register)
 	safety.Register(e, "recall", recall.Register)
+	safety.Register(e, "route", route.Register)
 	e.Run()
 }
