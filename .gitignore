@@ -47,3 +47,7 @@ repomix-output.md
 /pack-eval
 /context
 !/context/
+/route
+!/route/
+/agent
+/code
