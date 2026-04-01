@@ -23,7 +23,11 @@ func main() {
 	fs.Parse(os.Args[2:])
 
 	// Build graph from current directory
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: getwd: %v\n", err)
+		os.Exit(2)
+	}
 	g, err := depgraph.BuildGraph(cwd)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

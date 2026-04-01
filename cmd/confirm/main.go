@@ -38,7 +38,10 @@ func main() {
 	if *jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		enc.Encode(result)
+		if err := enc.Encode(result); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
 	} else {
 		fmt.Print(confirm.FormatVerdict(result))
 	}
