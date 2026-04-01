@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	sdk "github.com/dotcommander/piglet/sdk"
 )
@@ -20,7 +21,16 @@ type SubTask struct {
 func PlanTasks(ctx context.Context, ext *sdk.Extension, request string, caps []Capability) ([]SubTask, error) {
 	capSummary := FormatCapabilities(caps)
 
-	prompt := fmt.Sprintf("Available capabilities:\n%s\nUser request: %s", capSummary, request)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Available capabilities:\n%s\n", capSummary)
+
+	// Ask route extension for intent/domain classification if available
+	if hint := routeHint(ctx, ext, request); hint != "" {
+		fmt.Fprintf(&b, "Routing analysis: %s\n\n", hint)
+	}
+
+	fmt.Fprintf(&b, "User request: %s", request)
+	prompt := b.String()
 
 	resp, err := ext.Chat(ctx, sdk.ChatRequest{
 		System:    LoadPlanPrompt(),
@@ -75,4 +85,22 @@ func PlanTasks(ctx context.Context, ext *sdk.Extension, request string, caps []C
 	}
 
 	return tasks, nil
+}
+
+// routeHint calls the route tool via the host to get intent/domain classification.
+// Returns empty string if route is unavailable — coordinator works without it.
+func routeHint(ctx context.Context, ext *sdk.Extension, request string) string {
+	result, err := ext.CallHostTool(ctx, "route", map[string]any{
+		"prompt": request,
+	})
+	if err != nil || result.IsError {
+		return ""
+	}
+
+	for _, block := range result.Content {
+		if block.Text != "" {
+			return block.Text
+		}
+	}
+	return ""
 }
