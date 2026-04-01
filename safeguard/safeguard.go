@@ -53,6 +53,12 @@ func BlockerWithConfig(cfg Config, compiled []*regexp.Regexp, cwd string, audit 
 		if toolName == "bash" {
 			command, _ := args["command"].(string)
 			if command != "" {
+				// Fast path: skip security checks for known read-only commands.
+				if ClassifyCommand(command) == CommandReadOnly {
+					audit.Log(toolName, "allowed", "read_only", truncate(command, 200))
+					return true, args, nil
+				}
+
 				// Metacharacter injection checks (parser-level attacks).
 				if err := ValidateInjection(command); err != nil {
 					audit.Log(toolName, "blocked", err.Error(), truncate(command, 200))
