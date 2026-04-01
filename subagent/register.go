@@ -94,12 +94,14 @@ func Register(e *sdk.Extension) {
 			timeout := 5 * time.Minute
 			deadline := time.Now().Add(timeout)
 			pollInterval := 500 * time.Millisecond
+			timer := time.NewTimer(pollInterval)
+			defer timer.Stop()
 
 			for {
 				select {
 				case <-ctx.Done():
 					return sdk.ErrorResult("dispatch cancelled"), nil
-				default:
+				case <-timer.C:
 				}
 
 				if time.Now().After(deadline) {
@@ -117,7 +119,7 @@ func Register(e *sdk.Extension) {
 					return sdk.TextResult(fmt.Sprintf("[agent %s]\n\n%s", agentID, result)), nil
 				}
 
-				time.Sleep(pollInterval)
+				timer.Reset(pollInterval)
 			}
 		},
 	})
