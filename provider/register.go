@@ -14,10 +14,17 @@ import (
 // RegisterProvider sends notifications immediately, so calls are deferred to
 // OnInitAppend to ensure the RPC pipe (FD 4) is open.
 func Register(e *sdk.Extension) {
+	cfg := loadProviderConfig()
+
 	e.OnInitAppend(func(e *sdk.Extension) {
 		e.RegisterProvider("openai")
 		e.RegisterProvider("anthropic")
 		e.RegisterProvider("google")
+
+		// Register custom providers from config
+		for name := range cfg.Custom {
+			e.RegisterProvider(name)
+		}
 	})
 
 	e.OnProviderStream(func(ctx context.Context, x *sdk.Extension, req sdk.ProviderStreamRequest) (*sdk.ProviderStreamResponse, error) {
@@ -26,10 +33,27 @@ func Register(e *sdk.Extension) {
 			return nil, fmt.Errorf("unmarshal model: %w", err)
 		}
 
+		// Apply config-driven overrides: proxy baseUrl, custom providers, compat quirks
+		applyOverrides(cfg, &model)
+
 		key, err := x.AuthGetKey(ctx, model.Provider)
 		if err != nil {
 			return nil, fmt.Errorf("get api key: %w", err)
 		}
+
+		// Fallback: if the host has no key, try key_command from provider config.
+		// Supports three formats: "!shell-command", "ENV_VAR_NAME", or literal.
+		// Shell command results are cached for the process lifetime.
+		if key == "" {
+			if cmd := resolveKeyCommand(cfg, model.Provider); cmd != "" {
+				resolved, resolveErr := resolveKey(ctx, model.Provider, cmd)
+				if resolveErr != nil {
+					return nil, fmt.Errorf("key resolution for %q failed: %w", model.Provider, resolveErr)
+				}
+				key = resolved
+			}
+		}
+
 		if key == "" {
 			return nil, fmt.Errorf("no API key configured for provider %q", model.Provider)
 		}
