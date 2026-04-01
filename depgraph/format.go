@@ -53,10 +53,7 @@ func FormatImpact(packages []string, module string, tokens int) string {
 	}
 
 	for i, p := range packages {
-		line := "\n\n  " + shorten(p, module)
-		if i > 0 {
-			line = "\n  " + shorten(p, module)
-		}
+		line := "\n  " + shorten(p, module)
 		if budget > 0 && b.Len()+len(line) > budget {
 			remaining := len(packages) - i
 			fmt.Fprintf(&b, "\n... (%d more)", remaining)

@@ -29,6 +29,7 @@ type Graph struct {
 	Packages map[string]*Package // import path → package
 	Forward  map[string][]string // import path → packages it imports (within module)
 	Reverse  map[string][]string // import path → packages that import it (within module)
+	dirIndex map[string]string   // dir → import path, lazy-initialized from Packages
 }
 
 type goListPkg struct {
@@ -88,9 +89,7 @@ func BuildGraph(root string) (*Graph, error) {
 				continue
 			}
 			if _, inModule := packages[imp]; !inModule {
-				if !strings.HasPrefix(imp, mod+"/") && imp != mod {
-					continue
-				}
+				continue
 			}
 			seen[imp] = struct{}{}
 			forward[e.ImportPath] = append(forward[e.ImportPath], imp)
@@ -113,12 +112,20 @@ func BuildGraph(root string) (*Graph, error) {
 		sort.Strings(reverse[dep])
 	}
 
+	dirIndex := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if e.Dir != "" {
+			dirIndex[e.Dir] = e.ImportPath
+		}
+	}
+
 	return &Graph{
 		Root:     root,
 		Module:   mod,
 		Packages: packages,
 		Forward:  forward,
 		Reverse:  reverse,
+		dirIndex: dirIndex,
 	}, nil
 }
 
@@ -141,20 +148,38 @@ func (g *Graph) ResolvePackage(input string) (string, bool) {
 		abs = filepath.Join(g.Root, input)
 	}
 	abs = filepath.Clean(abs)
+	g.ensureDirIndex()
 
-	// Exact dir match first, then check if abs is a file inside the package dir.
-	for _, pkg := range g.Packages {
-		if pkg.Dir == abs {
-			return pkg.ImportPath, true
-		}
+	// Exact dir match first.
+	if ip, ok := g.dirIndex[abs]; ok {
+		return ip, true
 	}
-	for _, pkg := range g.Packages {
-		if strings.HasPrefix(abs, pkg.Dir+string(filepath.Separator)) {
-			return pkg.ImportPath, true
+	// File inside a package dir — walk up until we find a package.
+	dir := filepath.Dir(abs)
+	for {
+		if ip, ok := g.dirIndex[dir]; ok {
+			return ip, true
 		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
 	}
 
 	return "", false
+}
+
+func (g *Graph) ensureDirIndex() {
+	if g.dirIndex != nil {
+		return
+	}
+	g.dirIndex = make(map[string]string, len(g.Packages))
+	for ip, pkg := range g.Packages {
+		if pkg.Dir != "" {
+			g.dirIndex[pkg.Dir] = ip
+		}
+	}
 }
 
 func readModulePath(root string) (_ string, retErr error) {
