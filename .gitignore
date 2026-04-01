@@ -44,3 +44,6 @@ repomix-output.md
 # Additional CLI and pack binaries
 /piglet-cron
 /pack-cron
+/pack-eval
+/context
+!/context/
