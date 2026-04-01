@@ -21,22 +21,22 @@ const (
 )
 
 type Plan struct {
-	Title      string    `yaml:"title"`
-	Slug       string    `yaml:"slug"`
-	Mode       string    `yaml:"mode,omitempty"`
-	Created    time.Time `yaml:"created"`
-	Updated    time.Time `yaml:"updated"`
-	Active     bool      `yaml:"active"`
-	Steps      []Step    `yaml:"steps"`
-	GitEnabled bool      `yaml:"git_enabled,omitempty"` // checkpoint commits enabled
+	Title      string
+	Slug       string
+	Mode       string
+	Created    time.Time
+	Updated    time.Time
+	Active     bool
+	Steps      []Step
+	GitEnabled bool
 }
 
 type Step struct {
-	ID        int    `yaml:"id"`
-	Text      string `yaml:"text"`
-	Status    string `yaml:"status"`
-	Notes     string `yaml:"notes,omitempty"`
-	CommitSHA string `yaml:"commit_sha,omitempty"` // checkpoint commit for this step
+	ID        int
+	Text      string
+	Status    string
+	Notes     string
+	CommitSHA string
 }
 
 func NewPlan(title string, steps []string) (*Plan, error) {

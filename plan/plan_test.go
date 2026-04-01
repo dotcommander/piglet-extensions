@@ -353,26 +353,15 @@ func TestStoreList(t *testing.T) {
 
 	s := newStore(t)
 
-	p1, err := plan.NewPlan("Alpha Plan", []string{"step"})
+	// Single-file model: only one plan per directory (plan.md)
+	p, err := plan.NewPlan("Alpha Plan", []string{"step"})
 	require.NoError(t, err)
-	p1.Active = false
-	require.NoError(t, s.Save(p1))
-
-	p2, err := plan.NewPlan("Beta Plan", []string{"step"})
-	require.NoError(t, err)
-	p2.Active = false
-	require.NoError(t, s.Save(p2))
+	require.NoError(t, s.Save(p))
 
 	plans, err := s.List()
 	require.NoError(t, err)
-	assert.Len(t, plans, 2)
-
-	slugs := make([]string, len(plans))
-	for i, p := range plans {
-		slugs[i] = p.Slug
-	}
-	assert.Contains(t, slugs, p1.Slug)
-	assert.Contains(t, slugs, p2.Slug)
+	assert.Len(t, plans, 1)
+	assert.Equal(t, p.Slug, plans[0].Slug)
 }
 
 func TestStoreSetActive(t *testing.T) {
@@ -380,27 +369,17 @@ func TestStoreSetActive(t *testing.T) {
 
 	s := newStore(t)
 
-	p1, err := plan.NewPlan("First Plan", []string{"step"})
+	p, err := plan.NewPlan("First Plan", []string{"step"})
 	require.NoError(t, err)
-	require.NoError(t, s.Save(p1))
+	require.NoError(t, s.Save(p))
 
-	p2, err := plan.NewPlan("Second Plan", []string{"step"})
-	require.NoError(t, err)
-	p2.Active = false
-	require.NoError(t, s.Save(p2))
-
-	// Switch active to p2.
-	require.NoError(t, s.SetActive(p2.Slug))
+	// SetActive is a no-op with single-file model (always active)
+	require.NoError(t, s.SetActive(p.Slug))
 
 	active, err2 := s.Active()
 	require.NoError(t, err2)
 	require.NotNil(t, active)
-	assert.Equal(t, p2.Slug, active.Slug)
-
-	// p1 should no longer be active.
-	loaded1, err := s.Load(p1.Slug)
-	require.NoError(t, err)
-	assert.False(t, loaded1.Active)
+	assert.Equal(t, p.Slug, active.Slug)
 }
 
 func TestStoreSetActiveNotFound(t *testing.T) {
@@ -408,9 +387,9 @@ func TestStoreSetActiveNotFound(t *testing.T) {
 
 	s := newStore(t)
 
+	// SetActive is a no-op with single-file model — no error
 	err := s.SetActive("no-such-plan")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	assert.NoError(t, err)
 }
 
 func TestStoreDeactivate(t *testing.T) {
@@ -426,16 +405,12 @@ func TestStoreDeactivate(t *testing.T) {
 	require.NoError(t, err2)
 	require.NotNil(t, activeBefore)
 
+	// Deactivate deletes the plan.md file
 	require.NoError(t, s.Deactivate())
 
 	activeAfter, err3 := s.Active()
 	require.NoError(t, err3)
 	assert.Nil(t, activeAfter, "should have no active plan after Deactivate")
-
-	// Persisted file should reflect the change.
-	loaded, err := s.Load(p.Slug)
-	require.NoError(t, err)
-	assert.False(t, loaded.Active)
 }
 
 func TestStoreDelete(t *testing.T) {
@@ -453,9 +428,10 @@ func TestStoreDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, plans)
 
-	// Load should fail after delete.
-	_, err = s.Load(p.Slug)
-	require.Error(t, err)
+	// Load returns nil after delete (file not found)
+	loaded, err := s.Load(p.Slug)
+	require.NoError(t, err)
+	assert.Nil(t, loaded)
 }
 
 func TestStoreDeleteNonExistent(t *testing.T) {
@@ -491,8 +467,7 @@ func TestFormatPromptStatuses(t *testing.T) {
 
 	assert.Contains(t, out, "## Active Plan: My Task")
 	assert.Contains(t, out, "- [ ] 1. pending step")
-	assert.Contains(t, out, "**2. active step**")
-	assert.Contains(t, out, "← in progress")
+	assert.Contains(t, out, "- [>] 2. active step")
 	assert.Contains(t, out, "- [x] 3. done step")
 	assert.Contains(t, out, "- [-] 4. skipped step")
 }
@@ -702,4 +677,52 @@ func TestFormatPromptExecuteMode(t *testing.T) {
 
 	out := plan.FormatPrompt(p)
 	assert.NotContains(t, out, "MODE: PROPOSE")
+}
+
+// --- Markdown roundtrip ------------------------------------------------------
+
+func TestMarkdownRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	p, err := plan.NewPlan("Roundtrip Plan", []string{"pending step", "active step", "done step", "skipped step", "failed step"})
+	require.NoError(t, err)
+
+	require.NoError(t, p.UpdateStep(2, plan.StatusInProgress, "", ""))
+	require.NoError(t, p.UpdateStep(3, plan.StatusDone, "", "abc1234567890"))
+	require.NoError(t, p.UpdateStep(4, plan.StatusSkipped, "", ""))
+	require.NoError(t, p.UpdateStep(5, plan.StatusFailed, "oops", ""))
+	p.Mode = plan.ModePropose
+	p.GitEnabled = true
+
+	md := plan.FormatMarkdown(p)
+
+	parsed, err := plan.ParseMarkdown(md)
+	require.NoError(t, err)
+
+	assert.Equal(t, p.Title, parsed.Title)
+	assert.Equal(t, p.Slug, parsed.Slug)
+	assert.Equal(t, p.Mode, parsed.Mode)
+	assert.Equal(t, p.GitEnabled, parsed.GitEnabled)
+	require.Len(t, parsed.Steps, 5)
+	assert.Equal(t, plan.StatusPending, parsed.Steps[0].Status)
+	assert.Equal(t, plan.StatusInProgress, parsed.Steps[1].Status)
+	assert.Equal(t, plan.StatusDone, parsed.Steps[2].Status)
+	assert.Contains(t, parsed.Steps[2].CommitSHA, "abc1234")
+	assert.Equal(t, plan.StatusSkipped, parsed.Steps[3].Status)
+	assert.Equal(t, plan.StatusFailed, parsed.Steps[4].Status)
+	assert.Equal(t, "oops", parsed.Steps[4].Notes)
+}
+
+func TestParseMarkdownMinimal(t *testing.T) {
+	t.Parallel()
+
+	md := "# Simple Plan\n\n- [ ] Step one\n- [x] Step two\n"
+	p, err := plan.ParseMarkdown(md)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Simple Plan", p.Title)
+	require.Len(t, p.Steps, 2)
+	assert.Equal(t, plan.StatusPending, p.Steps[0].Status)
+	assert.Equal(t, plan.StatusDone, p.Steps[1].Status)
+	assert.Equal(t, plan.ModeExecute, p.Mode) // default
 }

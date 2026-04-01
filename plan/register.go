@@ -46,7 +46,7 @@ func Register(e *sdk.Extension) {
 
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "plan_create",
-		Description: "Create a new structured plan with steps. Deactivates any existing active plan. Checkpoint commits are enabled by default in git repos.",
+		Description: "Create a plan.md file in the project directory with structured steps. Human-readable, git-visible, session-surviving.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -60,7 +60,7 @@ func Register(e *sdk.Extension) {
 			},
 			"required": []string{"title", "steps"},
 		},
-		PromptHint: "Create a structured plan to track multi-step work",
+		PromptHint: "Create a plan.md to track multi-step work — persists as a file in the project",
 		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
 			return handlePlanCreate(s, args)
 		},
@@ -68,7 +68,7 @@ func Register(e *sdk.Extension) {
 
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "plan_update",
-		Description: "Update a step in the active plan: change status, set notes, add a step after, or remove a step. Checkpoint commits are created automatically when marking steps done/skipped/failed if git is enabled.",
+		Description: "Update a step in plan.md: change status, set notes, add a step, or remove a step. Checkpoint commits are created automatically when marking steps done/skipped/failed if git is enabled.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -81,7 +81,7 @@ func Register(e *sdk.Extension) {
 			},
 			"required": []string{"step"},
 		},
-		PromptHint: "Update step status, notes, or structure in the active plan",
+		PromptHint: "Update step status, notes, or structure in plan.md",
 		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
 			return handlePlanUpdate(s, args)
 		},
@@ -113,7 +113,7 @@ func Register(e *sdk.Extension) {
 
 	e.RegisterCommand(sdk.CommandDef{
 		Name:        "plan",
-		Description: "View, list, switch, archive, clear, or delete plans",
+		Description: "View, manage, or delete the project plan (plan.md)",
 		Handler:     makePlanCommandHandler(e, s),
 	})
 }
@@ -145,8 +145,6 @@ func handlePlanCreate(s *planState, args map[string]any) (*sdk.ToolResult, error
 		p.GitEnabled = true
 	}
 
-	_ = s.store.Deactivate()
-
 	if err := s.store.Save(p); err != nil {
 		return sdk.ErrorResult(fmt.Sprintf("save: %v", err)), nil
 	}
@@ -164,7 +162,7 @@ func handlePlanUpdate(s *planState, args map[string]any) (*sdk.ToolResult, error
 		return sdk.ErrorResult(fmt.Sprintf("load plan: %v", err)), nil
 	}
 	if p == nil {
-		return sdk.ErrorResult("no active plan"), nil
+		return sdk.ErrorResult("no plan.md found in project directory"), nil
 	}
 
 	stepID := intArg(args, "step")
@@ -218,7 +216,6 @@ func handlePlanUpdate(s *planState, args map[string]any) (*sdk.ToolResult, error
 
 	result := FormatPrompt(p)
 	if p.IsComplete() {
-		_ = s.store.Deactivate()
 		result += "\n\nAll steps complete — plan archived."
 	}
 	return sdk.TextResult(result), nil
@@ -239,7 +236,7 @@ func handlePlanMode(s *planState, args map[string]any) (*sdk.ToolResult, error) 
 		return sdk.ErrorResult(fmt.Sprintf("load plan: %v", err)), nil
 	}
 	if p == nil {
-		return sdk.ErrorResult("no active plan"), nil
+		return sdk.ErrorResult("no plan.md found in project directory"), nil
 	}
 
 	p.Mode = mode
@@ -307,18 +304,8 @@ func makePlanCommandHandler(e *sdk.Extension, s *planState) func(context.Context
 		switch {
 		case args == "":
 			showActivePlan(e, s)
-		case args == "list":
-			listAllPlans(e, s)
-		case strings.HasPrefix(args, "switch "):
-			slug := strings.TrimSpace(strings.TrimPrefix(args, "switch "))
-			switchActivePlan(e, s, slug)
-		case args == "archive":
-			archiveActivePlan(e, s)
-		case args == "clear":
+		case args == "delete" || args == "clear":
 			clearActivePlan(e, s)
-		case strings.HasPrefix(args, "delete "):
-			slug := strings.TrimSpace(strings.TrimPrefix(args, "delete "))
-			deleteNamedPlan(e, s, slug)
 		case args == "approve":
 			approveActivePlan(e, s)
 		case args == "mode":
@@ -328,7 +315,7 @@ func makePlanCommandHandler(e *sdk.Extension, s *planState) func(context.Context
 		case args == "resume":
 			showPlanResume(e, s)
 		default:
-			e.ShowMessage("Usage: /plan [list|switch <slug>|archive|clear|delete <slug>|approve|mode|checkpoints|resume]")
+			e.ShowMessage("Usage: /plan [delete|approve|mode|checkpoints|resume]")
 		}
 		return nil
 	}
@@ -341,49 +328,10 @@ func showActivePlan(e *sdk.Extension, s *planState) {
 		return
 	}
 	if p == nil {
-		e.ShowMessage("No active plan.")
+		e.ShowMessage("No plan.md found. Use plan_create to create one.")
 		return
 	}
 	e.ShowMessage(FormatPrompt(p))
-}
-
-func listAllPlans(e *sdk.Extension, s *planState) {
-	plans, err := s.store.List()
-	if err != nil {
-		e.ShowMessage(fmt.Sprintf("error: %v", err))
-		return
-	}
-	if len(plans) == 0 {
-		e.ShowMessage("No plans.")
-		return
-	}
-	var b strings.Builder
-	b.WriteString("Plans:\n\n")
-	for _, p := range plans {
-		done, total := p.Progress()
-		marker := "  "
-		if p.Active {
-			marker = "* "
-		}
-		fmt.Fprintf(&b, "%s%s (%d/%d done)\n", marker, p.Slug, done, total)
-	}
-	e.ShowMessage(b.String())
-}
-
-func switchActivePlan(e *sdk.Extension, s *planState, slug string) {
-	if err := s.store.SetActive(slug); err != nil {
-		e.ShowMessage(fmt.Sprintf("error: %v", err))
-		return
-	}
-	e.ShowMessage(fmt.Sprintf("Switched to plan: %s", slug))
-}
-
-func archiveActivePlan(e *sdk.Extension, s *planState) {
-	if err := s.store.Deactivate(); err != nil {
-		e.ShowMessage(fmt.Sprintf("error: %v", err))
-		return
-	}
-	e.ShowMessage("Active plan archived.")
 }
 
 func clearActivePlan(e *sdk.Extension, s *planState) {
@@ -393,22 +341,14 @@ func clearActivePlan(e *sdk.Extension, s *planState) {
 		return
 	}
 	if p == nil {
-		e.ShowMessage("No active plan to clear.")
+		e.ShowMessage("No plan.md to delete.")
 		return
 	}
-	if err := s.store.Delete(p.Slug); err != nil {
+	if err := s.store.Delete(""); err != nil {
 		e.ShowMessage(fmt.Sprintf("error: %v", err))
 		return
 	}
-	e.ShowMessage("Active plan deleted.")
-}
-
-func deleteNamedPlan(e *sdk.Extension, s *planState, slug string) {
-	if err := s.store.Delete(slug); err != nil {
-		e.ShowMessage(fmt.Sprintf("error: %v", err))
-		return
-	}
-	e.ShowMessage(fmt.Sprintf("Deleted plan: %s", slug))
+	e.ShowMessage("plan.md deleted.")
 }
 
 func approveActivePlan(e *sdk.Extension, s *planState) {
@@ -418,7 +358,7 @@ func approveActivePlan(e *sdk.Extension, s *planState) {
 		return
 	}
 	if p == nil {
-		e.ShowMessage("No active plan.")
+		e.ShowMessage("No plan.md found.")
 		return
 	}
 	p.Mode = ModeExecute
@@ -436,7 +376,7 @@ func showActivePlanMode(e *sdk.Extension, s *planState) {
 		return
 	}
 	if p == nil {
-		e.ShowMessage("No active plan.")
+		e.ShowMessage("No plan.md found.")
 		return
 	}
 	mode := p.Mode
@@ -453,7 +393,7 @@ func togglePlanCheckpoints(e *sdk.Extension, s *planState) {
 		return
 	}
 	if p == nil {
-		e.ShowMessage("No active plan.")
+		e.ShowMessage("No plan.md found.")
 		return
 	}
 	if s.git == nil {
@@ -479,7 +419,7 @@ func showPlanResume(e *sdk.Extension, s *planState) {
 		return
 	}
 	if p == nil {
-		e.ShowMessage("No active plan.")
+		e.ShowMessage("No plan.md found.")
 		return
 	}
 	resume := p.ResumeStep()

@@ -9,6 +9,8 @@ import (
 //go:embed defaults/mode-propose.md
 var modeProposeMD string
 
+// FormatPrompt renders the plan for injection into the system prompt.
+// Uses the same markdown format as plan.md but with extra status info.
 func FormatPrompt(p *Plan) string {
 	if p == nil {
 		return ""
@@ -29,26 +31,24 @@ func FormatPrompt(p *Plan) string {
 	}
 
 	for _, s := range p.Steps {
+		marker := " "
 		switch s.Status {
 		case StatusDone:
-			fmt.Fprintf(&b, "- [x] %d. %s", s.ID, s.Text)
-			if s.CommitSHA != "" {
-				fmt.Fprintf(&b, " (%s)", ShortSHA(s.CommitSHA))
-			}
-			b.WriteByte('\n')
+			marker = "x"
 		case StatusInProgress:
-			fmt.Fprintf(&b, "- [ ] **%d. %s** ← in progress\n", s.ID, s.Text)
+			marker = ">"
 		case StatusSkipped:
-			fmt.Fprintf(&b, "- [-] %d. %s\n", s.ID, s.Text)
+			marker = "-"
 		case StatusFailed:
-			fmt.Fprintf(&b, "- [!] %d. %s", s.ID, s.Text)
-			if s.CommitSHA != "" {
-				fmt.Fprintf(&b, " (%s)", ShortSHA(s.CommitSHA))
-			}
-			b.WriteByte('\n')
-		default:
-			fmt.Fprintf(&b, "- [ ] %d. %s\n", s.ID, s.Text)
+			marker = "!"
 		}
+
+		fmt.Fprintf(&b, "- [%s] %d. %s", marker, s.ID, s.Text)
+		if s.CommitSHA != "" {
+			fmt.Fprintf(&b, " (%s)", ShortSHA(s.CommitSHA))
+		}
+		b.WriteByte('\n')
+
 		if s.Notes != "" {
 			fmt.Fprintf(&b, "  - %s\n", s.Notes)
 		}
@@ -59,5 +59,6 @@ func FormatPrompt(p *Plan) string {
 	if p.GitEnabled {
 		b.WriteString(" | checkpoints enabled")
 	}
+	b.WriteString("\nPlan file: plan.md (human-editable)")
 	return b.String()
 }
