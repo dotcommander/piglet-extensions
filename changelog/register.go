@@ -104,5 +104,5 @@ func writeChangelog(dir, md string) error {
 		existing = string(data)
 	}
 
-	return xdg.WriteFileAtomic(path, []byte(md+existing))
+	return xdg.WriteFileAtomic(path, []byte(md+"\n\n"+existing))
 }
