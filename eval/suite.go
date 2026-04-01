@@ -75,6 +75,16 @@ func validateSuite(s *Suite) error {
 		if !validScorers[c.Scorer] {
 			return fmt.Errorf("case %q: unknown scorer %q (valid: exact, contains, regex, judge)", c.Name, c.Scorer)
 		}
+		switch c.Scorer {
+		case "exact", "contains", "regex":
+			if c.Expected == "" {
+				return fmt.Errorf("case %q: scorer %q requires expected field", c.Name, c.Scorer)
+			}
+		case "judge":
+			if c.Criteria == "" {
+				return fmt.Errorf("case %q: scorer %q requires criteria field", c.Name, c.Scorer)
+			}
+		}
 	}
 	return nil
 }

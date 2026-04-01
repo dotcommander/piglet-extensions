@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet/sdk"
 )
 
@@ -58,14 +59,15 @@ func (s *RegexScorer) Score(_ context.Context, response, expected, _ string) (Sc
 
 // JudgeScorer asks an LLM to evaluate the response against criteria.
 type JudgeScorer struct {
-	ext *sdk.Extension
+	ext    *sdk.Extension
+	prompt string
 }
 
 func (s *JudgeScorer) Score(ctx context.Context, response, _ string, criteria string) (ScoreResult, error) {
-	prompt := formatJudgeInput(response, criteria)
+	input := formatJudgeInput(response, criteria)
 	resp, err := s.ext.Chat(ctx, sdk.ChatRequest{
-		System:    defaultJudgePrompt,
-		Messages:  []sdk.ChatMessage{{Role: "user", Content: prompt}},
+		System:    s.prompt,
+		Messages:  []sdk.ChatMessage{{Role: "user", Content: input}},
 		Model:     "small",
 		MaxTokens: 200,
 	})
@@ -95,7 +97,8 @@ func NewScorer(name string, ext *sdk.Extension) (Scorer, error) {
 	case "regex":
 		return &RegexScorer{}, nil
 	case "judge":
-		return &JudgeScorer{ext: ext}, nil
+		prompt := xdg.LoadOrCreateExt("eval", "judge-prompt.md", strings.TrimSpace(defaultJudgePrompt))
+		return &JudgeScorer{ext: ext, prompt: prompt}, nil
 	default:
 		return nil, fmt.Errorf("unknown scorer %q", name)
 	}

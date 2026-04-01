@@ -3,6 +3,7 @@ package eval
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/dotcommander/piglet/sdk"
@@ -62,7 +63,7 @@ func (r *Runner) Run(ctx context.Context, suite *Suite, caseFilter []string) (*R
 	}
 
 	for _, c := range suite.Cases {
-		if len(caseFilter) > 0 && !containsStr(caseFilter, c.Name) {
+		if len(caseFilter) > 0 && !slices.Contains(caseFilter, c.Name) {
 			continue
 		}
 
@@ -139,13 +140,4 @@ func computeSummary(cases []CaseResult) RunSummary {
 	}
 	s.AvgScore = totalScore / float64(s.Total)
 	return s
-}
-
-func containsStr(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
