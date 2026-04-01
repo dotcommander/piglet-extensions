@@ -75,6 +75,7 @@ packs:
 	go build -o pack-code ./packs/code/
 	go build -o pack-workflow ./packs/workflow/
 	go build -o pack-cron ./packs/cron/
+	go build -o pack-eval ./packs/eval/
 
 clean:
 	@for ext in $(EXTENSION_NAMES); do \

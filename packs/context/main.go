@@ -2,11 +2,13 @@ package main
 
 import (
 	"github.com/dotcommander/piglet-extensions/behavior"
+	"github.com/dotcommander/piglet-extensions/distill"
 	"github.com/dotcommander/piglet-extensions/gitcontext"
 	"github.com/dotcommander/piglet-extensions/inbox"
 	"github.com/dotcommander/piglet-extensions/memory"
 	"github.com/dotcommander/piglet-extensions/packs/internal/safety"
 	"github.com/dotcommander/piglet-extensions/prompts"
+	"github.com/dotcommander/piglet-extensions/recall"
 	sessiontools "github.com/dotcommander/piglet-extensions/session-tools"
 	"github.com/dotcommander/piglet-extensions/skill"
 	"github.com/dotcommander/piglet/sdk"
@@ -21,5 +23,7 @@ func main() {
 	safety.Register(e, "prompts", prompts.Register)
 	safety.Register(e, "session-tools", sessiontools.Register)
 	safety.Register(e, "inbox", inbox.Register)
+	safety.Register(e, "distill", distill.Register)
+	safety.Register(e, "recall", recall.Register)
 	e.Run()
 }
