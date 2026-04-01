@@ -49,6 +49,7 @@ func Register(e *sdk.Extension) {
 		reg, err := BuildRegistry(ctx, x)
 		if err != nil {
 			x.Log("warn", fmt.Sprintf("[route] registry build failed: %v", err))
+			reg = nil
 		}
 
 		// Load feedback store and learned triggers
