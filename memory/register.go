@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
@@ -319,10 +320,25 @@ type wireMsg struct {
 	Data json.RawMessage `json:"data"`
 }
 
+// compactConfig holds configurable parameters for the compaction handler.
+type compactConfig struct {
+	KeepRecent         int `yaml:"keep_recent"`
+	TruncateToolResult int `yaml:"truncate_tool_result"`
+}
+
+func defaultCompactConfig() compactConfig {
+	return compactConfig{
+		KeepRecent:         6,
+		TruncateToolResult: 2000,
+	}
+}
+
 // makeCompactHandler returns the SDK compact handler that works with raw JSON messages.
 // It reads facts from the store, optionally refines with an LLM call, and keeps
 // the last keepRecent messages prepended with a summary reference message.
 func makeCompactHandler(ext *sdk.Extension, s *Store) func(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
+	cfg := xdg.LoadYAMLExt("memory", "compact.yaml", defaultCompactConfig())
+
 	return func(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
 		// Parse incoming messages
 		var params struct {
@@ -332,15 +348,25 @@ func makeCompactHandler(ext *sdk.Extension, s *Store) func(ctx context.Context, 
 			return nil, fmt.Errorf("unmarshal compact params: %w", err)
 		}
 
-		const keepRecent = 6
-		if len(params.Messages) <= keepRecent+1 {
+		if len(params.Messages) <= cfg.KeepRecent+1 {
 			// Not enough to compact — return as-is
 			return raw, nil
 		}
 
+		// Truncate large tool results in messages being compacted to prevent
+		// bash/read output from dominating the summarizer's budget.
+		truncateToolResults(params.Messages[:len(params.Messages)-cfg.KeepRecent], cfg.TruncateToolResult)
+
+		// Extract prior compaction file lists for cumulative tracking.
+		priorRead, priorModified := extractPriorFileLists(params.Messages)
+
 		// Get fact summary from store
 		result := Compact(s)
 		summary := result.Summary
+
+		// Merge prior compaction file lists into the current summary
+		// so cumulative tracking survives across compaction boundaries.
+		summary = mergeFileLists(summary, priorRead, priorModified)
 
 		// Try to refine with LLM if we have facts
 		if summary != "" {
@@ -377,7 +403,7 @@ func makeCompactHandler(ext *sdk.Extension, s *Store) func(ctx context.Context, 
 		}
 
 		// Keep last keepRecent messages, prepend summary
-		kept := params.Messages[len(params.Messages)-keepRecent:]
+		kept := params.Messages[len(params.Messages)-cfg.KeepRecent:]
 		wire := make([]wireMsg, 0, len(kept)+2)
 		wire = append(wire, wireMsg{Type: "user", Data: summaryData})
 

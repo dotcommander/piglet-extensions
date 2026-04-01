@@ -85,6 +85,28 @@ func buildFactSummary(facts []Fact) string {
 			fmt.Fprintf(&b, "  - %s\n", o)
 		}
 	}
+
+	// Append machine-parseable file tracking tags for cumulative tracking
+	// across compaction boundaries.
+	if len(files) > 0 {
+		b.WriteString("\n<read-files>\n")
+		for _, f := range files {
+			b.WriteString(f)
+			b.WriteByte('\n')
+		}
+		b.WriteString("</read-files>\n")
+	}
+	if len(edits) > 0 {
+		b.WriteString("\n<modified-files>\n")
+		for _, e := range edits {
+			// Extract just the path (before ": description")
+			path, _, _ := strings.Cut(e, ":")
+			b.WriteString(strings.TrimSpace(path))
+			b.WriteByte('\n')
+		}
+		b.WriteString("</modified-files>\n")
+	}
+
 	return b.String()
 }
 
