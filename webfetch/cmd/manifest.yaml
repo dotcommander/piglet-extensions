@@ -1,9 +1,12 @@
 name: webfetch
 version: 0.1.0
 runtime: ./webfetch
+description: Fetch URLs as clean markdown or search the web
 capabilities:
   - tools
   - promptSections
+intents: [search, explain]
+triggers: [fetch url, web search, browse, read webpage, documentation lookup]
 defaults:
   - src: cmd/defaults/prompt.md
     dest: extensions/webfetch/prompt.md
