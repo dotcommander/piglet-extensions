@@ -28,9 +28,9 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Parallel()
 
 		cases := []struct {
-			key      string
-			wantVal  string
-			wantCat  string
+			key     string
+			wantVal string
+			wantCat string
 		}{
 			{"alpha", "value-a", "config"},
 			{"beta", "value-b", "config"},
@@ -195,3 +195,119 @@ func TestStoreEmptyCwd(t *testing.T) {
 	assert.NotEmpty(t, s.Path())
 }
 
+func TestStoreRelations(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Relate creates bidirectional link", func(t *testing.T) {
+		t.Parallel()
+		cwd := t.TempDir()
+		s, err := memory.NewStore(cwd)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Clear() })
+
+		require.NoError(t, s.Set("x", "1", ""))
+		require.NoError(t, s.Set("y", "2", ""))
+
+		require.NoError(t, s.Relate("x", "y"))
+
+		fx, ok := s.Get("x")
+		require.True(t, ok)
+		fy, ok := s.Get("y")
+		require.True(t, ok)
+		assert.Contains(t, fx.Relations, "y")
+		assert.Contains(t, fy.Relations, "x")
+	})
+
+	t.Run("Relate is idempotent", func(t *testing.T) {
+		t.Parallel()
+		cwd := t.TempDir()
+		s, err := memory.NewStore(cwd)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Clear() })
+
+		require.NoError(t, s.Set("x", "1", ""))
+		require.NoError(t, s.Set("y", "2", ""))
+
+		require.NoError(t, s.Relate("x", "y"))
+		require.NoError(t, s.Relate("x", "y")) // duplicate
+
+		fx, ok := s.Get("x")
+		require.True(t, ok)
+		assert.Len(t, fx.Relations, 1, "duplicate relate should not create duplicate entries")
+	})
+
+	t.Run("Relate requires both keys to exist", func(t *testing.T) {
+		t.Parallel()
+		cwd := t.TempDir()
+		s, err := memory.NewStore(cwd)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Clear() })
+
+		require.NoError(t, s.Set("x", "1", ""))
+		err = s.Relate("x", "nonexistent")
+		assert.Error(t, err)
+	})
+
+	t.Run("Unrelate removes bidirectional link", func(t *testing.T) {
+		t.Parallel()
+		cwd := t.TempDir()
+		s, err := memory.NewStore(cwd)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Clear() })
+
+		require.NoError(t, s.Set("x", "1", ""))
+		require.NoError(t, s.Set("y", "2", ""))
+		require.NoError(t, s.Relate("x", "y"))
+		require.NoError(t, s.Unrelate("x", "y"))
+
+		fx, ok := s.Get("x")
+		require.True(t, ok)
+		fy, ok := s.Get("y")
+		require.True(t, ok)
+		assert.NotContains(t, fx.Relations, "y")
+		assert.NotContains(t, fy.Relations, "x")
+	})
+
+	t.Run("Delete cleans up relations", func(t *testing.T) {
+		t.Parallel()
+		cwd := t.TempDir()
+		s, err := memory.NewStore(cwd)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Clear() })
+
+		require.NoError(t, s.Set("x", "1", ""))
+		require.NoError(t, s.Set("y", "2", ""))
+		require.NoError(t, s.Set("z", "3", ""))
+		require.NoError(t, s.Relate("x", "y"))
+		require.NoError(t, s.Relate("x", "z"))
+
+		require.NoError(t, s.Delete("x"))
+
+		fy, ok := s.Get("y")
+		require.True(t, ok)
+		fz, ok := s.Get("z")
+		require.True(t, ok)
+		assert.NotContains(t, fy.Relations, "x")
+		assert.NotContains(t, fz.Relations, "x")
+	})
+
+	t.Run("Relations persist across reload", func(t *testing.T) {
+		t.Parallel()
+		cwd := t.TempDir()
+		s, err := memory.NewStore(cwd)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = s.Clear() })
+
+		require.NoError(t, s.Set("x", "1", ""))
+		require.NoError(t, s.Set("y", "2", ""))
+		require.NoError(t, s.Relate("x", "y"))
+
+		// Reload from same cwd.
+		s2, err := memory.NewStore(cwd)
+		require.NoError(t, err)
+
+		fx, ok := s2.Get("x")
+		require.True(t, ok)
+		assert.Contains(t, fx.Relations, "y")
+	})
+}

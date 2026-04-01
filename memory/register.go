@@ -170,6 +170,76 @@ func Register(e *sdk.Extension) {
 		},
 	})
 
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "memory_relate",
+		Description: "Create a bidirectional relation between two memory facts. Both keys must exist.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"key_a": map[string]any{"type": "string", "description": "First fact key"},
+				"key_b": map[string]any{"type": "string", "description": "Second fact key"},
+			},
+			"required": []string{"key_a", "key_b"},
+		},
+		PromptHint: "Link two related facts in memory",
+		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			if store == nil {
+				return sdk.ErrorResult("memory store not available"), nil
+			}
+			keyA, _ := args["key_a"].(string)
+			keyB, _ := args["key_b"].(string)
+			if keyA == "" || keyB == "" {
+				return sdk.ErrorResult("key_a and key_b are required"), nil
+			}
+			if err := store.Relate(keyA, keyB); err != nil {
+				return sdk.ErrorResult(err.Error()), nil
+			}
+			return sdk.TextResult(fmt.Sprintf("Linked: %s ↔ %s", keyA, keyB)), nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "memory_related",
+		Description: "Find all facts related to a key by traversing memory graph edges. Returns facts within the specified depth.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"key":       map[string]any{"type": "string", "description": "Starting fact key"},
+				"max_depth": map[string]any{"type": "integer", "description": "Maximum traversal depth (default: 3)"},
+			},
+			"required": []string{"key"},
+		},
+		PromptHint: "Find related facts by traversing memory graph",
+		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			if store == nil {
+				return sdk.ErrorResult("memory store not available"), nil
+			}
+			key, _ := args["key"].(string)
+			if key == "" {
+				return sdk.ErrorResult("key is required"), nil
+			}
+			maxDepth := 3
+			if md, ok := args["max_depth"].(float64); ok && int(md) > 0 {
+				maxDepth = int(md)
+			}
+			facts := Related(store, key, maxDepth)
+			if len(facts) == 0 {
+				return sdk.TextResult("No related facts found for: " + key), nil
+			}
+			var b strings.Builder
+			for _, f := range facts {
+				b.WriteString(f.Key)
+				b.WriteString(": ")
+				b.WriteString(f.Value)
+				if len(f.Relations) > 0 {
+					fmt.Fprintf(&b, " [→ %s]", strings.Join(f.Relations, ", "))
+				}
+				b.WriteByte('\n')
+			}
+			return sdk.TextResult(strings.TrimRight(b.String(), "\n")), nil
+		},
+	})
+
 	// Command
 	e.RegisterCommand(sdk.CommandDef{
 		Name:        "memory",
@@ -217,8 +287,25 @@ func Register(e *sdk.Extension) {
 					return nil
 				}
 				e.ShowMessage(fmt.Sprintf("Deleted: %s", key))
+			case strings.HasPrefix(args, "related "):
+				key := strings.TrimSpace(strings.TrimPrefix(args, "related "))
+				facts := Related(store, key, 3)
+				if len(facts) == 0 {
+					e.ShowMessage(fmt.Sprintf("No facts related to %q", key))
+					return nil
+				}
+				var b strings.Builder
+				fmt.Fprintf(&b, "Facts related to %q:\n\n", key)
+				for _, f := range facts {
+					if len(f.Relations) > 0 {
+						fmt.Fprintf(&b, "  %s: %s [→ %s]\n", f.Key, f.Value, strings.Join(f.Relations, ", "))
+					} else {
+						fmt.Fprintf(&b, "  %s: %s\n", f.Key, f.Value)
+					}
+				}
+				e.ShowMessage(b.String())
 			default:
-				e.ShowMessage("Usage: /memory [clear|clear context|delete <key>]")
+				e.ShowMessage("Usage: /memory [clear|clear context|delete <key>|related <key>]")
 			}
 			return nil
 		},

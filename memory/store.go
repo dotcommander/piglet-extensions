@@ -16,11 +16,12 @@ import (
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 )
 
-// Fact is a single key/value memory entry with optional category.
+// Fact is a single key/value memory entry with optional category and relations.
 type Fact struct {
 	Key       string    `json:"key"`
 	Value     string    `json:"value"`
 	Category  string    `json:"category,omitzero"`
+	Relations []string  `json:"relations,omitzero"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -105,7 +106,7 @@ func (s *Store) List(category string) []Fact {
 	return out
 }
 
-// Delete removes a fact by key and rewrites the file.
+// Delete removes a fact by key, cleans up its relations, and rewrites the file.
 func (s *Store) Delete(key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -115,6 +116,58 @@ func (s *Store) Delete(key string) error {
 	}
 
 	delete(s.data, key)
+
+	// Remove deleted key from all remaining facts' Relations slices.
+	for k, f := range s.data {
+		if slices.Contains(f.Relations, key) {
+			f.Relations = slices.DeleteFunc(f.Relations, func(r string) bool { return r == key })
+			s.data[k] = f
+		}
+	}
+
+	return s.flush()
+}
+
+// Relate creates a bidirectional link between two facts.
+// Both keys must exist. Idempotent — duplicate relations are ignored.
+func (s *Store) Relate(keyA, keyB string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	factA, okA := s.data[keyA]
+	factB, okB := s.data[keyB]
+	if !okA || !okB {
+		return fmt.Errorf("memory: both keys must exist")
+	}
+
+	if !slices.Contains(factA.Relations, keyB) {
+		factA.Relations = append(factA.Relations, keyB)
+		slices.Sort(factA.Relations)
+		s.data[keyA] = factA
+	}
+	if !slices.Contains(factB.Relations, keyA) {
+		factB.Relations = append(factB.Relations, keyA)
+		slices.Sort(factB.Relations)
+		s.data[keyB] = factB
+	}
+
+	return s.flush()
+}
+
+// Unrelate removes a bidirectional link between two facts.
+func (s *Store) Unrelate(keyA, keyB string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if factA, ok := s.data[keyA]; ok {
+		factA.Relations = slices.DeleteFunc(factA.Relations, func(k string) bool { return k == keyB })
+		s.data[keyA] = factA
+	}
+	if factB, ok := s.data[keyB]; ok {
+		factB.Relations = slices.DeleteFunc(factB.Relations, func(k string) bool { return k == keyA })
+		s.data[keyB] = factB
+	}
+
 	return s.flush()
 }
 
