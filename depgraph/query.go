@@ -102,11 +102,8 @@ func (g *Graph) DetectCycles() []Cycle {
 		stack = append(stack, pkg)
 
 		neighbors := g.Forward[pkg]
-		sorted := make([]string, len(neighbors))
-		copy(sorted, neighbors)
-		sort.Strings(sorted)
 
-		for _, neighbor := range sorted {
+		for _, neighbor := range neighbors {
 			if color[neighbor] == gray {
 				// Found a back edge — extract cycle.
 				start := -1
@@ -191,11 +188,8 @@ func (g *Graph) ShortestPath(src, dst string) []string {
 		queue = queue[1:]
 
 		neighbors := g.Forward[cur]
-		sorted := make([]string, len(neighbors))
-		copy(sorted, neighbors)
-		sort.Strings(sorted)
 
-		for _, neighbor := range sorted {
+		for _, neighbor := range neighbors {
 			if _, visited := parent[neighbor]; visited {
 				continue
 			}
