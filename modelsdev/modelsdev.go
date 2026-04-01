@@ -19,6 +19,19 @@ const (
 	cacheMaxAge   = 24 * time.Hour
 )
 
+// modelsdevConfig holds configurable settings for models.dev sync.
+type modelsdevConfig struct {
+	APIURL string `yaml:"api_url"`
+}
+
+func loadModelsdevConfig() string {
+	cfg := xdg.LoadYAMLExt("modelsdev", "modelsdev.yaml", modelsdevConfig{APIURL: DefaultAPIURL})
+	if cfg.APIURL == "" {
+		return DefaultAPIURL
+	}
+	return cfg.APIURL
+}
+
 type apiResponse map[string]providerData
 
 type providerData struct {
@@ -71,7 +84,7 @@ func CacheStale() bool {
 // Refresh fetches the models.dev API, merges updates into the existing
 // models.yaml, and writes back. Returns the number of updated models.
 func Refresh(ctx context.Context) (int, error) {
-	return RefreshFromURL(ctx, DefaultAPIURL)
+	return RefreshFromURL(ctx, loadModelsdevConfig())
 }
 
 // RefreshFromURL is like Refresh but fetches from the given URL (for testing).
