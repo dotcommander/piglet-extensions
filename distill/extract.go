@@ -68,14 +68,14 @@ func countToolUseBlocks(raw json.RawMessage) int {
 // isAssistantWithError returns true if msg is an assistant message containing "error".
 func isAssistantWithError(raw json.RawMessage) bool {
 	var msg struct {
-		Role    string `json:"role"`
-		Content any    `json:"content"`
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
 	}
 	if json.Unmarshal(raw, &msg) != nil || msg.Role != "assistant" {
 		return false
 	}
-	lower := strings.ToLower(fmt.Sprintf("%v", msg.Content))
-	return strings.Contains(lower, "error")
+	text := extractTextContent(msg.Content)
+	return strings.Contains(strings.ToLower(text), "error")
 }
 
 // hasSuccessfulToolCall returns true if msg contains a tool_use block (successful follow-up).
