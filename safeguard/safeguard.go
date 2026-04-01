@@ -53,6 +53,12 @@ func BlockerWithConfig(cfg Config, compiled []*regexp.Regexp, cwd string, audit 
 		if toolName == "bash" {
 			command, _ := args["command"].(string)
 			if command != "" {
+				// Metacharacter injection checks (parser-level attacks).
+				if err := ValidateInjection(command); err != nil {
+					audit.Log(toolName, "blocked", err.Error(), truncate(command, 200))
+					return false, nil, fmt.Errorf("safeguard: %v", err)
+				}
+
 				for _, re := range compiled {
 					if re.MatchString(command) {
 						audit.Log(toolName, "blocked", re.String(), truncate(command, 200))
