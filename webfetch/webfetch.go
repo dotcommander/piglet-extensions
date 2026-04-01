@@ -23,9 +23,9 @@ const (
 	searchTimeout = 15 * time.Second
 	userAgent     = "piglet/1.0"
 
-	cacheNSFetch  = "webfetch"
-	cacheNSSearch = "webfetch_search"
-	cacheTTLFetch = 24 * time.Hour
+	cacheNSFetch   = "webfetch"
+	cacheNSSearch  = "webfetch_search"
+	cacheTTLFetch  = 24 * time.Hour
 	cacheTTLSearch = time.Hour
 )
 
@@ -100,6 +100,7 @@ type Client struct {
 	http            *http.Client
 	github          *GitHubClient
 	storage         *Storage
+	ddgSearchURL    string
 }
 
 // New creates a Client with custom provider lists (used for testing).
@@ -110,8 +111,9 @@ func New(fetchProviders []FetchProvider, searchProviders []SearchProvider, githu
 		http: &http.Client{
 			Timeout: fetchTimeout,
 		},
-		github:  github,
-		storage: NewStorage(),
+		github:       github,
+		storage:      NewStorage(),
+		ddgSearchURL: DefaultDuckDuckGoConfig().SearchURL,
 	}
 }
 
@@ -126,18 +128,18 @@ func NewWithConfig(cfg *Config) *Client {
 	if jinaKey == "" {
 		jinaKey = os.Getenv("JINA_API_KEY")
 	}
-	jina := NewJinaProvider(jinaKey)
+	jina := NewJinaProvider(jinaKey, cfg.Jina)
 	fetchProviders = append(fetchProviders, jina)
 	searchProviders = append(searchProviders, jina)
 
 	// Add Perplexity if API key is configured
-	if perplexity := NewPerplexityProvider(cfg.PerplexityAPIKey); perplexity != nil {
+	if perplexity := NewPerplexityProvider(cfg.PerplexityAPIKey, cfg.Perplexity); perplexity != nil {
 		fetchProviders = append(fetchProviders, perplexity)
 		searchProviders = append(searchProviders, perplexity)
 	}
 
 	// Add Gemini if API key is configured
-	if gemini := NewGeminiProvider(cfg.GeminiAPIKey); gemini != nil {
+	if gemini := NewGeminiProvider(cfg.GeminiAPIKey, cfg.Gemini); gemini != nil {
 		fetchProviders = append(fetchProviders, gemini)
 		searchProviders = append(searchProviders, gemini)
 	}
@@ -147,7 +149,7 @@ func NewWithConfig(cfg *Config) *Client {
 	if braveKey == "" {
 		braveKey = os.Getenv("BRAVE_API_KEY")
 	}
-	if brave := NewBraveProvider(braveKey); brave != nil {
+	if brave := NewBraveProvider(braveKey, cfg.Brave); brave != nil {
 		searchProviders = append(searchProviders, brave)
 	}
 
@@ -156,7 +158,7 @@ func NewWithConfig(cfg *Config) *Client {
 	if exaKey == "" {
 		exaKey = os.Getenv("EXA_API_KEY")
 	}
-	if exa := NewExaProvider(exaKey); exa != nil {
+	if exa := NewExaProvider(exaKey, cfg.Exa); exa != nil {
 		fetchProviders = append(fetchProviders, exa)
 		searchProviders = append(searchProviders, exa)
 	}
@@ -167,17 +169,21 @@ func NewWithConfig(cfg *Config) *Client {
 		github = NewGitHubClient(&cfg.GitHub)
 	}
 
-	return New(fetchProviders, searchProviders, github)
+	c := New(fetchProviders, searchProviders, github)
+	c.ddgSearchURL = cfg.DuckDuckGo.SearchURL
+	return c
 }
 
 // Default returns a Client with only Jina provider (no API keys required).
 func Default() *Client {
-	return NewWithConfig(&Config{
+	cfg := &Config{
 		GitHub: GitHubConfig{
 			Enabled:        true,
 			SkipLargeRepos: true,
 		},
-	})
+	}
+	cfg.applyDefaults()
+	return NewWithConfig(cfg)
 }
 
 // NewForTest creates a Client with mock Jina providers for testing.
@@ -218,8 +224,8 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, er
 			content := FormatGitHubResult(result)
 			c.storage.StoreFetch(rawURL, content)
 			if err := cache.Set(cacheNSFetch, rawURL, content, cacheTTLFetch); err != nil {
-			slog.Debug("cache write failed", "url", rawURL, "error", err)
-		}
+				slog.Debug("cache write failed", "url", rawURL, "error", err)
+			}
 			return content, nil
 		}
 	}
@@ -232,8 +238,8 @@ func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, er
 			// Store full content before returning
 			c.storage.StoreFetch(rawURL, content)
 			if err := cache.Set(cacheNSFetch, rawURL, content, cacheTTLFetch); err != nil {
-			slog.Debug("cache write failed", "url", rawURL, "error", err)
-		}
+				slog.Debug("cache write failed", "url", rawURL, "error", err)
+			}
 			return content, nil
 		}
 
@@ -328,7 +334,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]SearchR
 
 	// Fallback: fetch a DuckDuckGo search page via reader providers
 	slog.Debug("search providers exhausted, falling back to web fetch", "query", query)
-	ddgURL := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(query)
+	ddgURL := c.ddgSearchURL + "?q=" + url.QueryEscape(query)
 	content, err := c.Fetch(ctx, ddgURL, false)
 	if err != nil {
 		return nil, fmt.Errorf("all search providers failed (fetch fallback also failed): %w", lastErr)

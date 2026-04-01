@@ -12,11 +12,6 @@ import (
 	"time"
 )
 
-const (
-	defaultJinaReaderBase = "https://r.jina.ai/"
-	defaultJinaSearchBase = "https://s.jina.ai/"
-)
-
 // JinaProvider implements FetchProvider and SearchProvider using Jina AI readers.
 type JinaProvider struct {
 	readerBase string
@@ -25,9 +20,9 @@ type JinaProvider struct {
 	http       *http.Client
 }
 
-// NewJinaProvider creates a JinaProvider with default endpoints.
-func NewJinaProvider(apiKey string) *JinaProvider {
-	return NewJinaProviderWithBase(defaultJinaReaderBase, defaultJinaSearchBase, apiKey)
+// NewJinaProvider creates a JinaProvider with the given API key and endpoint config.
+func NewJinaProvider(apiKey string, cfg JinaConfig) *JinaProvider {
+	return NewJinaProviderWithBase(cfg.ReaderBase, cfg.SearchBase, apiKey)
 }
 
 // NewJinaProviderWithBase creates a JinaProvider with custom base URLs (for testing).

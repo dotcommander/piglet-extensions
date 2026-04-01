@@ -12,25 +12,25 @@ import (
 	"time"
 )
 
-const (
-	exaSearchURL   = "https://api.exa.ai/search"
-	exaContentsURL = "https://api.exa.ai/contents"
-)
-
 // ExaProvider implements SearchProvider and FetchProvider using the Exa API.
 type ExaProvider struct {
-	apiKey string
-	http   *http.Client
+	searchURL   string
+	contentsURL string
+	apiKey      string
+	http        *http.Client
 }
 
-// NewExaProvider creates an ExaProvider. Returns nil if apiKey is empty.
-func NewExaProvider(apiKey string) *ExaProvider {
+// NewExaProvider creates an ExaProvider with the given API key and endpoint config.
+// Returns nil if apiKey is empty.
+func NewExaProvider(apiKey string, cfg ExaConfig) *ExaProvider {
 	if apiKey == "" {
 		return nil
 	}
 	return &ExaProvider{
-		apiKey: apiKey,
-		http:   &http.Client{Timeout: 30 * time.Second},
+		searchURL:   cfg.SearchURL,
+		contentsURL: cfg.ContentsURL,
+		apiKey:      apiKey,
+		http:        &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -53,7 +53,7 @@ func (e *ExaProvider) Search(ctx context.Context, query string, limit int) ([]Se
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, exaSearchURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.searchURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
@@ -62,12 +62,12 @@ func (e *ExaProvider) Search(ctx context.Context, query string, limit int) ([]Se
 
 	resp, err := e.http.Do(req)
 	if err != nil {
-		return nil, &HTTPError{URL: exaSearchURL, StatusCode: 0, Err: err}
+		return nil, &HTTPError{URL: e.searchURL, StatusCode: 0, Err: err}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return nil, &HTTPError{URL: exaSearchURL, StatusCode: resp.StatusCode}
+		return nil, &HTTPError{URL: e.searchURL, StatusCode: resp.StatusCode}
 	}
 
 	var envelope exaSearchResponse
@@ -106,7 +106,7 @@ func (e *ExaProvider) Fetch(ctx context.Context, rawURL string) (string, error) 
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, exaContentsURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.contentsURL, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -115,12 +115,12 @@ func (e *ExaProvider) Fetch(ctx context.Context, rawURL string) (string, error) 
 
 	resp, err := e.http.Do(req)
 	if err != nil {
-		return "", &HTTPError{URL: exaContentsURL, StatusCode: 0, Err: err}
+		return "", &HTTPError{URL: e.contentsURL, StatusCode: 0, Err: err}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return "", &HTTPError{URL: exaContentsURL, StatusCode: resp.StatusCode}
+		return "", &HTTPError{URL: e.contentsURL, StatusCode: resp.StatusCode}
 	}
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))

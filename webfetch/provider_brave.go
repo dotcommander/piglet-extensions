@@ -13,18 +13,21 @@ import (
 // BraveProvider implements SearchProvider using the Brave Search API.
 // Brave is search-only — no fetch/reader capability.
 type BraveProvider struct {
-	apiKey string
-	http   *http.Client
+	searchURL string
+	apiKey    string
+	http      *http.Client
 }
 
-// NewBraveProvider creates a BraveProvider. Returns nil if apiKey is empty.
-func NewBraveProvider(apiKey string) *BraveProvider {
+// NewBraveProvider creates a BraveProvider with the given API key and endpoint config.
+// Returns nil if apiKey is empty.
+func NewBraveProvider(apiKey string, cfg BraveConfig) *BraveProvider {
 	if apiKey == "" {
 		return nil
 	}
 	return &BraveProvider{
-		apiKey: apiKey,
-		http:   &http.Client{Timeout: 30 * time.Second},
+		searchURL: cfg.SearchURL,
+		apiKey:    apiKey,
+		http:      &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -38,7 +41,7 @@ func (b *BraveProvider) Search(ctx context.Context, query string, limit int) ([]
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 	defer cancel()
 
-	searchURL := fmt.Sprintf("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d", url.QueryEscape(query), limit)
+	searchURL := fmt.Sprintf("%s?q=%s&count=%d", b.searchURL, url.QueryEscape(query), limit)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
 	if err != nil {

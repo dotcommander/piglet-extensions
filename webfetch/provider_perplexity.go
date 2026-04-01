@@ -35,26 +35,25 @@ func loadPerplexityPrompts() {
 	})
 }
 
-const (
-	perplexityAPIURL = "https://api.perplexity.ai/chat/completions"
-	perplexityModel  = "llama-3.1-sonar-small-128k-online"
-)
-
 // PerplexityProvider implements FetchProvider and SearchProvider using Perplexity API.
 type PerplexityProvider struct {
+	apiURL      string
+	model       string
 	apiKey      string
 	http        *http.Client
 	rateLimiter *rateLimiter
 }
 
-// NewPerplexityProvider creates a PerplexityProvider.
+// NewPerplexityProvider creates a PerplexityProvider with the given API key and endpoint config.
 // Returns nil if apiKey is empty.
-func NewPerplexityProvider(apiKey string) *PerplexityProvider {
+func NewPerplexityProvider(apiKey string, cfg PerplexityConfig) *PerplexityProvider {
 	if apiKey == "" {
 		return nil
 	}
 
 	return &PerplexityProvider{
+		apiURL: cfg.APIURL,
+		model:  cfg.Model,
 		apiKey: apiKey,
 		http: &http.Client{
 			Timeout: 30 * time.Second,
@@ -98,7 +97,7 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 	p.rateLimiter.Wait()
 
 	reqBody := perplexityRequest{
-		Model: perplexityModel,
+		Model: p.model,
 		Messages: []perplexityMessage{
 			{
 				Role:    "user",
@@ -112,7 +111,7 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, perplexityAPIURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiURL, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
@@ -121,7 +120,7 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return "", &HTTPError{URL: perplexityAPIURL, StatusCode: 0, Err: err}
+		return "", &HTTPError{URL: p.apiURL, StatusCode: 0, Err: err}
 	}
 	defer resp.Body.Close()
 
@@ -131,7 +130,7 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 	}
 
 	if resp.StatusCode >= 400 {
-		return "", &HTTPError{URL: perplexityAPIURL, StatusCode: resp.StatusCode}
+		return "", &HTTPError{URL: p.apiURL, StatusCode: resp.StatusCode}
 	}
 
 	var perplexResp perplexityResponse
@@ -167,7 +166,7 @@ func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int
 	p.rateLimiter.Wait()
 
 	reqBody := perplexityRequest{
-		Model: perplexityModel,
+		Model: p.model,
 		Messages: []perplexityMessage{
 			{
 				Role:    "user",
@@ -181,7 +180,7 @@ func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, perplexityAPIURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
@@ -190,7 +189,7 @@ func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int
 
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return nil, &HTTPError{URL: perplexityAPIURL, StatusCode: 0, Err: err}
+		return nil, &HTTPError{URL: p.apiURL, StatusCode: 0, Err: err}
 	}
 	defer resp.Body.Close()
 
@@ -200,7 +199,7 @@ func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, &HTTPError{URL: perplexityAPIURL, StatusCode: resp.StatusCode}
+		return nil, &HTTPError{URL: p.apiURL, StatusCode: resp.StatusCode}
 	}
 
 	var perplexResp perplexityResponse

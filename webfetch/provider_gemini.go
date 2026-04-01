@@ -35,26 +35,25 @@ func loadGeminiPrompts() {
 	})
 }
 
-const (
-	geminiAPIBase = "https://generativelanguage.googleapis.com/v1beta"
-	geminiModel   = "gemini-2.0-flash"
-)
-
 // GeminiProvider implements FetchProvider and SearchProvider using Google Gemini API.
 type GeminiProvider struct {
-	apiKey string
-	http   *http.Client
+	apiBase string
+	model   string
+	apiKey  string
+	http    *http.Client
 }
 
-// NewGeminiProvider creates a GeminiProvider.
+// NewGeminiProvider creates a GeminiProvider with the given API key and endpoint config.
 // Returns nil if apiKey is empty.
-func NewGeminiProvider(apiKey string) *GeminiProvider {
+func NewGeminiProvider(apiKey string, cfg GeminiConfig) *GeminiProvider {
 	if apiKey == "" {
 		return nil
 	}
 
 	return &GeminiProvider{
-		apiKey: apiKey,
+		apiBase: cfg.APIBase,
+		model:   cfg.Model,
+		apiKey:  apiKey,
 		http: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -96,7 +95,7 @@ type geminiError struct {
 // Fetch retrieves content by asking Gemini to summarize the URL.
 func (g *GeminiProvider) Fetch(ctx context.Context, rawURL string) (string, error) {
 	loadGeminiPrompts()
-	apiURL := fmt.Sprintf("%s/models/%s:generateContent?key=%s", geminiAPIBase, geminiModel, g.apiKey)
+	apiURL := fmt.Sprintf("%s/models/%s:generateContent?key=%s", g.apiBase, g.model, g.apiKey)
 
 	reqBody := geminiRequest{
 		Contents: []geminiContent{
@@ -166,7 +165,7 @@ func (g *GeminiProvider) Search(ctx context.Context, query string, limit int) ([
 		limit = 5
 	}
 
-	apiURL := fmt.Sprintf("%s/models/%s:generateContent?key=%s", geminiAPIBase, geminiModel, g.apiKey)
+	apiURL := fmt.Sprintf("%s/models/%s:generateContent?key=%s", g.apiBase, g.model, g.apiKey)
 
 	reqBody := geminiRequest{
 		Contents: []geminiContent{
