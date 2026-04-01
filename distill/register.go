@@ -193,10 +193,14 @@ func handleDistillSession(ctx context.Context, e *sdk.Extension, sessionID strin
 
 // isDistilledSkill checks if a skill file contains "source: distill" in its frontmatter.
 func isDistilledSkill(path string) bool {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return false
 	}
-	// Quick scan — no need to parse full YAML
-	return strings.Contains(string(data), "source: distill")
+	defer f.Close()
+
+	// Frontmatter is always in the first 2KB — no need to read the full file.
+	buf := make([]byte, 2048)
+	n, _ := f.Read(buf)
+	return strings.Contains(string(buf[:n]), "source: distill")
 }

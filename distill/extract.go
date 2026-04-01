@@ -66,6 +66,7 @@ func countToolUseBlocks(raw json.RawMessage) int {
 }
 
 // isAssistantWithError returns true if msg is an assistant message containing "error".
+// Checks only text blocks — tool names and tool results are ignored.
 func isAssistantWithError(raw json.RawMessage) bool {
 	var msg struct {
 		Role    string          `json:"role"`
@@ -74,8 +75,34 @@ func isAssistantWithError(raw json.RawMessage) bool {
 	if json.Unmarshal(raw, &msg) != nil || msg.Role != "assistant" {
 		return false
 	}
-	text := extractTextContent(msg.Content)
-	return strings.Contains(strings.ToLower(text), "error")
+	return textContainsError(msg.Content)
+}
+
+// textContainsError checks only text blocks (not tool names/results) for "error".
+func textContainsError(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	if raw[0] == '"' {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			return strings.Contains(strings.ToLower(s), "error")
+		}
+		return false
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return false
+	}
+	for _, b := range blocks {
+		if b.Type == "text" && strings.Contains(strings.ToLower(b.Text), "error") {
+			return true
+		}
+	}
+	return false
 }
 
 // hasSuccessfulToolCall returns true if msg contains a tool_use block (successful follow-up).
@@ -84,23 +111,18 @@ func hasSuccessfulToolCall(raw json.RawMessage) bool {
 }
 
 // formatMessages converts raw JSON messages into a readable transcript for the LLM.
-// Truncates to maxChars.
-func formatMessages(messages []json.RawMessage, maxChars int) string {
+// Truncates to maxBytes.
+func formatMessages(messages []json.RawMessage, maxBytes int) string {
 	var b strings.Builder
 	for _, raw := range messages {
 		line := formatMessage(raw)
 		if line == "" {
 			continue
 		}
-		if b.Len()+len(line) > maxChars {
-			remaining := maxChars - b.Len()
-			if remaining > 0 {
-				runes := []rune(line)
-				if remaining < len(runes) {
-					b.WriteString(string(runes[:remaining]))
-				} else {
-					b.WriteString(line)
-				}
+		if b.Len()+len(line) > maxBytes {
+			remaining := maxBytes - b.Len()
+			if remaining > 0 && remaining < len(line) {
+				b.WriteString(line[:remaining])
 			}
 			break
 		}
@@ -119,7 +141,10 @@ func formatMessage(raw json.RawMessage) string {
 		return ""
 	}
 
-	role := strings.Title(msg.Role) //nolint:staticcheck // acceptable for display
+	role := msg.Role
+	if len(role) > 0 && role[0] >= 'a' && role[0] <= 'z' {
+		role = string(role[0]-32) + role[1:]
+	}
 	content := extractTextContent(msg.Content)
 	if content == "" {
 		return ""
@@ -200,10 +225,18 @@ var frontmatterNameRe = regexp.MustCompile(`(?m)^name:\s*(.+)$`)
 
 // extractFrontmatterName parses the name field from YAML frontmatter.
 func extractFrontmatterName(content string) string {
-	if !strings.HasPrefix(strings.TrimSpace(content), "---") {
+	trimmed := strings.TrimSpace(content)
+	if !strings.HasPrefix(trimmed, "---") {
 		return ""
 	}
-	m := frontmatterNameRe.FindStringSubmatch(content)
+	// Find closing --- to limit search to frontmatter section only.
+	rest := trimmed[3:]
+	closeIdx := strings.Index(rest, "\n---")
+	if closeIdx < 0 {
+		closeIdx = len(rest)
+	}
+	frontmatter := rest[:closeIdx]
+	m := frontmatterNameRe.FindStringSubmatch(frontmatter)
 	if len(m) < 2 {
 		return ""
 	}

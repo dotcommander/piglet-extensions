@@ -144,6 +144,157 @@ func TestWriteSkillNoFrontmatter(t *testing.T) {
 	assert.Contains(t, body, content)
 }
 
+func TestIsAssistantWithError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("assistant with error in text block", func(t *testing.T) {
+		t.Parallel()
+		raw := json.RawMessage(`{"role":"assistant","content":[{"type":"text","text":"got an error"},{"type":"tool_use","name":"read_file","input":{}}]}`)
+		assert.True(t, isAssistantWithError(raw))
+	})
+
+	t.Run("assistant with error in string content", func(t *testing.T) {
+		t.Parallel()
+		raw := json.RawMessage(`{"role":"assistant","content":"Error: file not found"}`)
+		assert.True(t, isAssistantWithError(raw))
+	})
+
+	t.Run("assistant with tool name containing error is not a match", func(t *testing.T) {
+		t.Parallel()
+		// Tool name contains "error" but text does not — should NOT match.
+		raw := json.RawMessage(`{"role":"assistant","content":[{"type":"tool_use","name":"error_handler","input":{}}]}`)
+		assert.False(t, isAssistantWithError(raw))
+	})
+
+	t.Run("assistant without error", func(t *testing.T) {
+		t.Parallel()
+		raw := json.RawMessage(`{"role":"assistant","content":"all good"}`)
+		assert.False(t, isAssistantWithError(raw))
+	})
+
+	t.Run("non-assistant role", func(t *testing.T) {
+		t.Parallel()
+		raw := json.RawMessage(`{"role":"user","content":"got an error"}`)
+		assert.False(t, isAssistantWithError(raw))
+	})
+}
+
+func TestExtractFrontmatterName(t *testing.T) {
+	t.Parallel()
+
+	t.Run("extracts name from frontmatter", func(t *testing.T) {
+		t.Parallel()
+		content := "---\nname: my-skill\ndescription: test\n---\n\nBody.\n"
+		assert.Equal(t, "my-skill", extractFrontmatterName(content))
+	})
+
+	t.Run("ignores name in body", func(t *testing.T) {
+		t.Parallel()
+		content := "---\nname: frontmatter-name\n---\n\n## Config\nname: body-name\n"
+		assert.Equal(t, "frontmatter-name", extractFrontmatterName(content))
+	})
+
+	t.Run("no frontmatter returns empty", func(t *testing.T) {
+		t.Parallel()
+		content := "Just a body without frontmatter."
+		assert.Equal(t, "", extractFrontmatterName(content))
+	})
+
+	t.Run("frontmatter without name returns empty", func(t *testing.T) {
+		t.Parallel()
+		content := "---\ndescription: no name here\n---\n\nBody.\n"
+		assert.Equal(t, "", extractFrontmatterName(content))
+	})
+}
+
+func TestFormatMessages_TruncationConsistency(t *testing.T) {
+	t.Parallel()
+
+	t.Run("truncates at byte boundary", func(t *testing.T) {
+		t.Parallel()
+		messages := []json.RawMessage{
+			json.RawMessage(`{"role":"user","content":"hello"}`),
+			json.RawMessage(`{"role":"assistant","content":"world"}`),
+		}
+		// Budget only fits first line ("User: hello\n" = 13 bytes)
+		result := formatMessages(messages, 13)
+		assert.Contains(t, result, "User: hello")
+		assert.NotContains(t, result, "Assistant")
+	})
+
+	t.Run("exact budget fits all", func(t *testing.T) {
+		t.Parallel()
+		messages := []json.RawMessage{
+			json.RawMessage(`{"role":"user","content":"hi"}`),
+		}
+		// "User: hi\n" = 9 bytes
+		result := formatMessages(messages, 9)
+		assert.Equal(t, "User: hi\n", result)
+	})
+}
+
+func TestFormatMessage_TitleCase(t *testing.T) {
+	t.Parallel()
+
+	t.Run("capitalizes role", func(t *testing.T) {
+		t.Parallel()
+		raw := json.RawMessage(`{"role":"user","content":"hello"}`)
+		assert.Equal(t, "User: hello\n", formatMessage(raw))
+	})
+
+	t.Run("assistant role capitalized", func(t *testing.T) {
+		t.Parallel()
+		raw := json.RawMessage(`{"role":"assistant","content":"hi"}`)
+		assert.Equal(t, "Assistant: hi\n", formatMessage(raw))
+	})
+
+	t.Run("already capitalized stays same", func(t *testing.T) {
+		t.Parallel()
+		raw := json.RawMessage(`{"role":"User","content":"hi"}`)
+		// No lowercase first char → no transformation
+		assert.Equal(t, "User: hi\n", formatMessage(raw))
+	})
+}
+
+func TestIsDistilledSkill(t *testing.T) {
+	t.Parallel()
+
+	t.Run("distilled skill file", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		path := filepath.Join(tmp, "test.md")
+		content := "---\nname: test\nsource: distill\n---\n\nBody.\n"
+		require.NoError(t, os.WriteFile(path, []byte(content), 0600))
+		assert.True(t, isDistilledSkill(path))
+	})
+
+	t.Run("non-distilled skill file", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		path := filepath.Join(tmp, "other.md")
+		content := "---\nname: test\nsource: manual\n---\n\nBody.\n"
+		require.NoError(t, os.WriteFile(path, []byte(content), 0600))
+		assert.False(t, isDistilledSkill(path))
+	})
+
+	t.Run("source in body beyond 2KB", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		path := filepath.Join(tmp, "big.md")
+		// 3KB of padding before the marker
+		frontmatter := "---\nname: test\n---\n\n"
+		body := strings.Repeat("x", 3000) + "\nsource: distill\n"
+		require.NoError(t, os.WriteFile(path, []byte(frontmatter+body), 0600))
+		// "source: distill" is beyond 2KB read — should NOT match
+		assert.False(t, isDistilledSkill(path))
+	})
+
+	t.Run("missing file returns false", func(t *testing.T) {
+		t.Parallel()
+		assert.False(t, isDistilledSkill("/nonexistent/path.md"))
+	})
+}
+
 func TestReadSessionMessages(t *testing.T) {
 	t.Parallel()
 
