@@ -94,11 +94,15 @@ func (r *Runner) runCase(ctx context.Context, c Case, model string) (CaseResult,
 	var responseText string
 	var usage sdk.TokenUsage
 	if err != nil {
-		responseText = ""
-	} else {
-		responseText = resp.Text
-		usage = resp.Usage
+		return CaseResult{
+			Name:       c.Name,
+			Prompt:     c.Prompt,
+			Reason:     fmt.Sprintf("chat failed: %v", err),
+			DurationMs: elapsed.Milliseconds(),
+		}, nil
 	}
+	responseText = resp.Text
+	usage = resp.Usage
 
 	score, scoreErr := scorer.Score(ctx, responseText, c.Expected, c.Criteria)
 	if scoreErr != nil {
