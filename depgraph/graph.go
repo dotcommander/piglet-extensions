@@ -157,12 +157,16 @@ func (g *Graph) ResolvePackage(input string) (string, bool) {
 	return "", false
 }
 
-func readModulePath(root string) (string, error) {
+func readModulePath(root string) (_ string, retErr error) {
 	f, err := os.Open(filepath.Join(root, "go.mod"))
 	if err != nil {
 		return "", fmt.Errorf("open go.mod: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && retErr == nil {
+			retErr = closeErr
+		}
+	}()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
