@@ -27,10 +27,7 @@ func TestClearOldToolResults_NotEnoughMessages(t *testing.T) {
 		tr := wireToolResult{
 			ToolCallID: "id",
 			ToolName:   "Read",
-			Content: []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			}{{Type: "text", Text: largeText(clearSizeThreshold + 1)}},
+			Content:    []textBlock{{Type: "text", Text: largeText(clearSizeThreshold + 1)}},
 		}
 		data, err := json.Marshal(tr)
 		require.NoError(t, err)
@@ -48,10 +45,7 @@ func TestClearOldToolResults_BelowSizeThreshold(t *testing.T) {
 	tr := wireToolResult{
 		ToolCallID: "tc1",
 		ToolName:   "Read",
-		Content: []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		}{{Type: "text", Text: "small result"}},
+		Content:    []textBlock{{Type: "text", Text: "small result"}},
 	}
 	data, err := json.Marshal(tr)
 	require.NoError(t, err)
@@ -72,10 +66,7 @@ func TestClearOldToolResults_AboveSizeThreshold(t *testing.T) {
 	tr := wireToolResult{
 		ToolCallID: "tc2",
 		ToolName:   "Bash",
-		Content: []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		}{{Type: "text", Text: bigText}},
+		Content:    []textBlock{{Type: "text", Text: bigText}},
 	}
 	data, err := json.Marshal(tr)
 	require.NoError(t, err)
@@ -95,10 +86,7 @@ func TestWireToolResult_RoundTrip(t *testing.T) {
 	tr := wireToolResult{
 		ToolCallID: "abc123",
 		ToolName:   "Read",
-		Content: []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		}{
+		Content: []textBlock{
 			{Type: "text", Text: "some content"},
 			{Type: "text", Text: "more content"},
 		},
@@ -122,10 +110,7 @@ func TestWireMsg_RoundTrip(t *testing.T) {
 	tr := wireToolResult{
 		ToolCallID: "id1",
 		ToolName:   "Bash",
-		Content: []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		}{{Type: "text", Text: "output"}},
+		Content:    []textBlock{{Type: "text", Text: "output"}},
 	}
 	trData, err := json.Marshal(tr)
 	require.NoError(t, err)

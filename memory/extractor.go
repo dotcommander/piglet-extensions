@@ -27,13 +27,10 @@ type toolCall struct {
 
 // toolResult represents a tool result message.
 type toolResult struct {
-	ToolName   string `json:"tool_name"`
-	ToolCallID string `json:"tool_call_id"`
-	IsError    bool   `json:"is_error"`
-	Content    []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
+	ToolName   string      `json:"tool_name"`
+	ToolCallID string      `json:"tool_call_id"`
+	IsError    bool        `json:"is_error"`
+	Content    []textBlock `json:"content"`
 }
 
 // assistantMsg represents an assistant message (partial parse).
@@ -99,7 +96,6 @@ func (e *Extractor) extractToolResult(tr toolResult) {
 		}
 		_ = e.store.Set(key, truncRunes(text, 300), contextCategory)
 	default:
-		// For other tools, store a brief record
 		if text != "" {
 			key := fmt.Sprintf("ctx:tool:%s:%d", tr.ToolName, e.turnNum)
 			_ = e.store.Set(key, truncRunes(text, 200), contextCategory)

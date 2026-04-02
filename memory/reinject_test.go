@@ -23,7 +23,7 @@ func newTestStore(t *testing.T) *Store {
 
 func TestFilterFacts_Empty(t *testing.T) {
 	t.Parallel()
-	got := filterFacts(nil, "ctx:edit:")
+	got := filterFacts(nil, contextEdit)
 	assert.Empty(t, got)
 }
 
@@ -33,7 +33,7 @@ func TestFilterFacts_NoMatch(t *testing.T) {
 		{Key: "ctx:file:main.go", Value: "read"},
 		{Key: "ctx:cmd:build", Value: "ran"},
 	}
-	got := filterFacts(facts, "ctx:edit:")
+	got := filterFacts(facts, contextEdit)
 	assert.Empty(t, got)
 }
 
@@ -43,7 +43,7 @@ func TestFilterFacts_AllMatch(t *testing.T) {
 		{Key: "ctx:edit:a.go", Value: "edited a"},
 		{Key: "ctx:edit:b.go", Value: "edited b"},
 	}
-	got := filterFacts(facts, "ctx:edit:")
+	got := filterFacts(facts, contextEdit)
 	assert.Len(t, got, 2)
 }
 
@@ -55,7 +55,7 @@ func TestFilterFacts_SortedByUpdatedAtDesc(t *testing.T) {
 		{Key: "ctx:edit:b.go", UpdatedAt: base.Add(3 * time.Hour)},
 		{Key: "ctx:edit:c.go", UpdatedAt: base.Add(2 * time.Hour)},
 	}
-	got := filterFacts(facts, "ctx:edit:")
+	got := filterFacts(facts, contextEdit)
 	require.Len(t, got, 3)
 	// Most recently updated first
 	assert.Equal(t, "ctx:edit:b.go", got[0].Key)
@@ -71,9 +71,9 @@ func TestFilterFacts_MixedPrefixes(t *testing.T) {
 		{Key: "ctx:edit:b.go", UpdatedAt: time.Now()},
 		{Key: "other:key", UpdatedAt: time.Now()},
 	}
-	editFacts := filterFacts(facts, "ctx:edit:")
+	editFacts := filterFacts(facts, contextEdit)
 	assert.Len(t, editFacts, 2)
-	fileFacts := filterFacts(facts, "ctx:file:")
+	fileFacts := filterFacts(facts, contextFile)
 	assert.Len(t, fileFacts, 1)
 }
 

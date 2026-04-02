@@ -148,10 +148,7 @@ func TestExtractPriorFileLists_DedupsAcrossMessages(t *testing.T) {
 func makeToolResultMsg(toolName, text string) wireMsg {
 	tr := wireToolResult{
 		ToolName: toolName,
-		Content: []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		}{{Type: "text", Text: text}},
+		Content:  []textBlock{{Type: "text", Text: text}},
 	}
 	data, _ := json.Marshal(tr)
 	return wireMsg{Type: "tool_result", Data: data}

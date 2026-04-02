@@ -26,7 +26,7 @@ func BuildMemoryPrompt(store *Store) string {
 	// Partition user facts vs context facts
 	var userFacts, contextFacts []Fact
 	for _, f := range allFacts {
-		if f.Category == "_context" {
+		if f.Category == contextCategory {
 			contextFacts = append(contextFacts, f)
 		} else {
 			userFacts = append(userFacts, f)

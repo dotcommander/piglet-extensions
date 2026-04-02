@@ -18,10 +18,7 @@ func TestExtractorFileRead(t *testing.T) {
 		ToolResults: []json.RawMessage{
 			mustMarshal(t, toolResult{
 				ToolName: "Read",
-				Content: []struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				}{{Type: "text", Text: "/Users/test/main.go\n1→ package main\n2→ func main() {}"}},
+				Content:  []textBlock{{Type: "text", Text: "/Users/test/main.go\n1→ package main\n2→ func main() {}"}},
 			}),
 		},
 	})
@@ -44,10 +41,7 @@ func TestExtractorBashError(t *testing.T) {
 			mustMarshal(t, toolResult{
 				ToolName: "Bash",
 				IsError:  true,
-				Content: []struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				}{{Type: "text", Text: "go build: undefined Foo"}},
+				Content:  []textBlock{{Type: "text", Text: "go build: undefined Foo"}},
 			}),
 		},
 	})
@@ -71,10 +65,7 @@ func TestExtractorPrune(t *testing.T) {
 			ToolResults: []json.RawMessage{
 				mustMarshal(t, toolResult{
 					ToolName: "Bash",
-					Content: []struct {
-						Type string `json:"type"`
-						Text string `json:"text"`
-					}{{Type: "text", Text: "ok"}},
+					Content:  []textBlock{{Type: "text", Text: "ok"}},
 				}),
 			},
 		})

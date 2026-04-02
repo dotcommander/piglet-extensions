@@ -25,27 +25,24 @@ func gatherCriticalContext(s *Store) []criticalContext {
 	var items []criticalContext
 	facts := s.List(contextCategory)
 
-	// Collect recent edits (last 3 by UpdatedAt)
-	editFacts := filterFacts(facts, "ctx:edit:")
+	editFacts := filterFacts(facts, contextEdit)
 	items = appendItems(items, editFacts, 3, "recent edits")
 
-	// Collect plan facts
-	planFacts := filterFacts(facts, "ctx:plan:")
+	planFacts := filterFacts(facts, contextPlan)
 	items = appendItems(items, planFacts, 1, "active plan")
 
-	// Collect error context (useful for avoiding repeated mistakes)
-	errorFacts := filterFacts(facts, "ctx:error:")
+	errorFacts := filterFacts(facts, contextError)
 	items = appendItems(items, errorFacts, 1, "recent errors")
 
 	return items
 }
 
-// filterFacts returns facts whose key starts with the given prefix,
+// filterFacts returns facts matching the given contextKind,
 // sorted by UpdatedAt descending so the most recently updated facts appear first.
-func filterFacts(facts []Fact, prefix string) []Fact {
+func filterFacts(facts []Fact, kind contextKind) []Fact {
 	var out []Fact
 	for _, f := range facts {
-		if strings.HasPrefix(f.Key, prefix) {
+		if classifyFact(f.Key) == kind {
 			out = append(out, f)
 		}
 	}

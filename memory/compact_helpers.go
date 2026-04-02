@@ -80,60 +80,57 @@ func mergeFileLists(summary string, priorRead, priorModified []string) string {
 		return summary
 	}
 
-	// Parse existing tags from summary
 	existingRead := parseXMLTag(summary, "read-files")
 	existingMod := parseXMLTag(summary, "modified-files")
 
-	// Merge with dedup
 	mergedRead := dedup(append(existingRead, priorRead...))
 	mergedMod := dedup(append(existingMod, priorModified...))
 
-	// Strip existing tags from summary
 	summary = stripXMLTag(summary, "read-files")
 	summary = stripXMLTag(summary, "modified-files")
 	summary = strings.TrimRight(summary, "\n")
 
-	// Re-append merged tags
 	var b strings.Builder
 	b.WriteString(summary)
 
 	if len(mergedRead) > 0 {
-		b.WriteString("\n\n<read-files>\n")
-		for _, f := range mergedRead {
-			b.WriteString(f)
-			b.WriteByte('\n')
-		}
-		b.WriteString("</read-files>")
+		b.WriteString("\n\n")
+		writeXMLTagBlock(&b, "read-files", mergedRead)
 	}
 	if len(mergedMod) > 0 {
-		b.WriteString("\n\n<modified-files>\n")
-		for _, f := range mergedMod {
-			b.WriteString(f)
-			b.WriteByte('\n')
-		}
-		b.WriteString("</modified-files>")
+		b.WriteString("\n\n")
+		writeXMLTagBlock(&b, "modified-files", mergedMod)
 	}
 
 	return b.String()
 }
 
-// parseXMLTag extracts lines between <tag> and </tag> from text.
-func parseXMLTag(text, tag string) []string {
+// findTagBounds returns byte offsets for content between <tag> and </tag>.
+// contentStart..contentEnd is the inner content; closeEnd is past the closing tag.
+// Returns ok=false if the tag pair is not found.
+func findTagBounds(text, tag string) (contentStart, contentEnd, closeEnd int, ok bool) {
 	open := "<" + tag + ">"
-	close := "</" + tag + ">"
+	closeTok := "</" + tag + ">"
 
 	start := strings.Index(text, open)
 	if start < 0 {
-		return nil
+		return 0, 0, 0, false
 	}
-	end := strings.Index(text[start:], close)
-	if end < 0 {
-		return nil
+	rel := strings.Index(text[start:], closeTok)
+	if rel < 0 {
+		return 0, 0, 0, false
 	}
+	return start + len(open), start + rel, start + rel + len(closeTok), true
+}
 
-	content := text[start+len(open) : start+end]
+// parseXMLTag extracts trimmed non-empty lines between <tag> and </tag>.
+func parseXMLTag(text, tag string) []string {
+	contentStart, contentEnd, _, ok := findTagBounds(text, tag)
+	if !ok {
+		return nil
+	}
 	var paths []string
-	for _, line := range strings.Split(content, "\n") {
+	for _, line := range strings.Split(text[contentStart:contentEnd], "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			paths = append(paths, line)
@@ -145,18 +142,33 @@ func parseXMLTag(text, tag string) []string {
 // stripXMLTag removes a <tag>...</tag> block from text.
 func stripXMLTag(text, tag string) string {
 	open := "<" + tag + ">"
-	close := "</" + tag + ">"
-
 	start := strings.Index(text, open)
 	if start < 0 {
 		return text
 	}
-	end := strings.Index(text[start:], close)
-	if end < 0 {
+	_, _, closeEnd, ok := findTagBounds(text, tag)
+	if !ok {
 		return text
 	}
+	return text[:start] + text[closeEnd:]
+}
 
-	return text[:start] + text[start+end+len(close):]
+// writeXMLTagBlock writes a <tag>\nitem\nitem\n</tag> block to b.
+// Does nothing if items is empty.
+func writeXMLTagBlock(b *strings.Builder, tag string, items []string) {
+	if len(items) == 0 {
+		return
+	}
+	b.WriteString("<")
+	b.WriteString(tag)
+	b.WriteString(">\n")
+	for _, item := range items {
+		b.WriteString(item)
+		b.WriteByte('\n')
+	}
+	b.WriteString("</")
+	b.WriteString(tag)
+	b.WriteString(">")
 }
 
 // dedup returns unique strings preserving first-seen order.

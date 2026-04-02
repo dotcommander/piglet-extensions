@@ -14,13 +14,10 @@ const clearSizeThreshold = 4096
 
 // wireToolResult is the wire representation of a ToolResultMessage.
 type wireToolResult struct {
-	ToolCallID string `json:"toolCallId"`
-	ToolName   string `json:"toolName"`
-	Content    []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
-	IsError bool `json:"isError"`
+	ToolCallID string      `json:"toolCallId"`
+	ToolName   string      `json:"toolName"`
+	Content    []textBlock `json:"content"`
+	IsError    bool        `json:"isError"`
 }
 
 // clearerConfig holds the configurable turn threshold for the micro-compactor.
@@ -102,10 +99,7 @@ func clearOldToolResults(ctx context.Context, x *sdk.Extension, turnThreshold in
 			"[Old tool result content cleared to save context — %s]",
 			tr.ToolName,
 		)
-		tr.Content = []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		}{{Type: "text", Text: placeholder}}
+		tr.Content = []textBlock{{Type: "text", Text: placeholder}}
 
 		data, err := json.Marshal(tr)
 		if err != nil {
