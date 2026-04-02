@@ -52,7 +52,7 @@ pipeline list [directory]        # list available pipelines
   -q                Quiet mode
 ```
 
-Pipeline YAML supports: `params` (with defaults/required), `steps` with `run`, `timeout`, `retries`, `retry_delay`, `allow_failure`, `each` (list iteration), `loop` (range/cartesian), `workdir`, `env`, and `when` (conditional). Template vars: `{param.<name>}`, `{prev.stdout}`, `{prev.json.<key>}`, `{step.<name>.stdout}`, `{item}`, `{loop.<key>}`, `{cwd}`, `{date}`, `{timestamp}`.
+Pipeline YAML supports: `params` (with defaults/required), `steps` with `run`, `timeout`, `retries`, `retry_delay`, `allow_failure`, `each` (list iteration), `loop` (range/cartesian), `workdir`, `env`, `when` (conditional), `max_output` (byte truncation, 0=unlimited), `output_format` (text|json validation). Pipeline-level: `on_error` (halt|continue), `parallel` (concurrent step groups), `finally` (cleanup steps that always run). Template vars: `{param.<name>}`, `{prev.stdout}`, `{prev.json.<key>}`, `{prev.status}`, `{step.<name>.stdout}`, `{step.<name>.status}`, `{item}`, `{loop.<key>}`, `{cwd}`, `{date}`, `{timestamp}`.
 
 ### bulk
 

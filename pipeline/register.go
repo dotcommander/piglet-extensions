@@ -174,10 +174,11 @@ func listPipelines() (*sdk.ToolResult, error) {
 	}
 
 	type entry struct {
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		StepCount   int      `json:"step_count"`
-		Params      []string `json:"params,omitempty"`
+		Name         string   `json:"name"`
+		Description  string   `json:"description"`
+		StepCount    int      `json:"step_count"`
+		FinallyCount int      `json:"finally_count,omitempty"`
+		Params       []string `json:"params,omitempty"`
 	}
 
 	entries := make([]entry, len(pipes))
@@ -187,10 +188,11 @@ func listPipelines() (*sdk.ToolResult, error) {
 			paramNames = append(paramNames, name)
 		}
 		entries[i] = entry{
-			Name:        p.Name,
-			Description: p.Description,
-			StepCount:   len(p.Steps),
-			Params:      paramNames,
+			Name:         p.Name,
+			Description:  p.Description,
+			StepCount:    len(p.Steps),
+			FinallyCount: len(p.Finally),
+			Params:       paramNames,
 		}
 	}
 
@@ -234,7 +236,7 @@ func handlePipeCommand(ctx context.Context, e *sdk.Extension, args string) error
 		return nil
 	}
 
-	e.ShowMessage(fmt.Sprintf("Running pipeline %q (%d steps)...", p.Name, len(p.Steps)))
+	e.ShowMessage(fmt.Sprintf("Running pipeline %q (%d steps, %d finally)...", p.Name, len(p.Steps), len(p.Finally)))
 
 	var result *PipelineResult
 	if dryRun {
@@ -249,14 +251,23 @@ func handlePipeCommand(ctx context.Context, e *sdk.Extension, args string) error
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("## Pipeline: %s\n\n", result.Name))
+	inFinally := false
 	for _, sr := range result.Steps {
+		if strings.HasPrefix(sr.Name, "finally:") && !inFinally {
+			sb.WriteString("--- cleanup ---\n\n")
+			inFinally = true
+		}
+		stepName := sr.Name
+		if strings.HasPrefix(sr.Name, "finally:") {
+			stepName = strings.TrimPrefix(sr.Name, "finally:")
+		}
 		icon := "+"
 		if sr.Status == "error" {
 			icon = "x"
 		} else if sr.Status == "skipped" {
 			icon = "-"
 		}
-		sb.WriteString(fmt.Sprintf("[%s] %s (%dms)\n", icon, sr.Name, sr.DurationMS))
+		sb.WriteString(fmt.Sprintf("[%s] %s (%dms)\n", icon, stepName, sr.DurationMS))
 		if sr.Output != "" {
 			sb.WriteString(TruncateUTF8(sr.Output, 500) + "\n")
 		}

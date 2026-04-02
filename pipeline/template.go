@@ -23,6 +23,7 @@ type TemplateContext struct {
 type StepOutput struct {
 	Stdout string
 	Status string // StatusOK or StatusError
+	Parsed any    // pre-parsed JSON object for {prev.json.*} resolution
 }
 
 // Clone returns a shallow copy with an independent Steps map,
@@ -100,6 +101,22 @@ func (tc *TemplateContext) resolve(key string) (string, bool) {
 	case strings.HasPrefix(key, "prev.json."):
 		if tc.Prev != nil {
 			field := key[len("prev.json."):]
+			if tc.Prev.Parsed != nil {
+				if m, ok := tc.Prev.Parsed.(map[string]any); ok {
+					if v, exists := m[field]; exists {
+						switch val := v.(type) {
+						case string:
+							return val, true
+						default:
+							data, err := json.Marshal(val)
+							if err != nil {
+								return "", true
+							}
+							return string(data), true
+						}
+					}
+				}
+			}
 			return jsonExtract(tc.Prev.Stdout, field), true
 		}
 

@@ -1108,3 +1108,342 @@ func TestRunValidationError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "pipeline name is required")
 }
+
+// ── M1: max_output ──────────────────────────────────────────────────────────────
+
+func TestMaxOutputTruncatesLargeOutput(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "trunc",
+		Steps: []Step{
+			{Name: "big", Run: "python3 -c \"print('x' * 1000)\"", MaxOutput: 20},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.Steps[0].Status)
+	assert.Contains(t, result.Steps[0].Output, "... (truncated)")
+}
+
+func TestMaxOutputZeroUnlimited(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "unlimited",
+		Steps: []Step{
+			{Name: "big", Run: "python3 -c \"print('x' * 100)\"", MaxOutput: 0},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.Steps[0].Status)
+	assert.NotContains(t, result.Steps[0].Output, "truncated")
+	assert.GreaterOrEqual(t, len(result.Steps[0].Output), 100)
+}
+
+func TestMaxOutputPreservesSmallOutput(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "small",
+		Steps: []Step{
+			{Name: "tiny", Run: "echo hello", MaxOutput: 8192},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.Steps[0].Status)
+	assert.Equal(t, "hello", result.Steps[0].Output)
+}
+
+// ── M3: on_error ────────────────────────────────────────────────────────────────
+
+func TestOnErrorContinueRunsAllSteps(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name:    "continue-pipe",
+		OnError: "continue",
+		Steps: []Step{
+			{Name: "ok1", Run: "echo first"},
+			{Name: "fail", Run: "exit 1"},
+			{Name: "ok2", Run: "echo third"},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "partial", result.Status)
+	require.Len(t, result.Steps, 3)
+	assert.Equal(t, "ok", result.Steps[0].Status)
+	assert.Equal(t, "error", result.Steps[1].Status)
+	assert.Equal(t, "ok", result.Steps[2].Status)
+}
+
+func TestOnErrorHaltIsDefault(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "halt-default",
+		Steps: []Step{
+			{Name: "fail", Run: "exit 1"},
+			{Name: "after", Run: "echo should-not-run"},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "error", result.Status)
+	require.Len(t, result.Steps, 1)
+}
+
+func TestOnErrorInvalidValue(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name:    "bad-policy",
+		OnError: "skip",
+		Steps:   []Step{{Name: "s", Run: "echo ok"}},
+	}
+	err := p.Validate(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid on_error")
+}
+
+// ── M2: output_format ───────────────────────────────────────────────────────────
+
+func TestOutputFormatJSONValid(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "json-ok",
+		Steps: []Step{
+			{Name: "json-step", Run: `echo '{"status":"ok","count":3}'`, OutputFormat: "json"},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.Steps[0].Status)
+	require.NotNil(t, result.Steps[0].Parsed)
+	m, ok := result.Steps[0].Parsed.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "ok", m["status"])
+}
+
+func TestOutputFormatJSONInvalid(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "json-bad",
+		Steps: []Step{
+			{Name: "bad-json", Run: "echo 'not json'", OutputFormat: "json"},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "error", result.Steps[0].Status)
+	assert.Contains(t, result.Steps[0].Error, "not valid JSON")
+}
+
+func TestOutputFormatJSONEmpty(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "json-empty",
+		Steps: []Step{
+			{Name: "empty", Run: "true", OutputFormat: "json"},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "error", result.Steps[0].Status)
+	assert.Contains(t, result.Steps[0].Error, "empty")
+}
+
+func TestOutputFormatInvalidValue(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name:  "bad-format",
+		Steps: []Step{{Name: "s", Run: "echo ok", OutputFormat: "xml"}},
+	}
+	err := p.Validate(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid output_format")
+}
+
+func TestOutputFormatJSONPrevParsed(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "json-chain",
+		Steps: []Step{
+			{Name: "producer", Run: `echo '{"status":"ok","count":3}'`, OutputFormat: "json"},
+			{Name: "consumer", Run: `echo "status={prev.json.status}"`},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.Steps[1].Status)
+	assert.Contains(t, result.Steps[1].Output, "status=ok")
+}
+
+// ── M4: finally ─────────────────────────────────────────────────────────────────
+
+func TestFinallyRunsOnSuccess(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "finally-success",
+		Steps: []Step{
+			{Name: "work", Run: "echo done"},
+		},
+		Finally: []Step{
+			{Name: "cleanup", Run: "echo cleaned"},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.Status)
+	require.Len(t, result.Steps, 2)
+	assert.Equal(t, "ok", result.Steps[0].Status)
+	assert.Equal(t, "finally:cleanup", result.Steps[1].Name)
+	assert.Equal(t, "ok", result.Steps[1].Status)
+	assert.Equal(t, "cleaned", result.Steps[1].Output)
+}
+
+func TestFinallyRunsOnFailure(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "finally-fail",
+		Steps: []Step{
+			{Name: "fail", Run: "exit 1"},
+		},
+		Finally: []Step{
+			{Name: "cleanup", Run: "echo cleaned"},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "error", result.Status)
+	require.Len(t, result.Steps, 2)
+	assert.Equal(t, "error", result.Steps[0].Status)
+	assert.Equal(t, "ok", result.Steps[1].Status)
+}
+
+func TestFinallyFailureDoesNotOverrideStatus(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "finally-fail-cleanup",
+		Steps: []Step{
+			{Name: "work", Run: "echo done"},
+		},
+		Finally: []Step{
+			{Name: "bad-cleanup", Run: "exit 1"},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.Status)
+	assert.Contains(t, result.Message, "finally")
+}
+
+func TestFinallyPreservesTemplateContext(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "finally-template",
+		Steps: []Step{
+			{Name: "setup", Run: "echo hello-from-setup"},
+		},
+		Finally: []Step{
+			{Name: "teardown", Run: "echo saw:{step.setup.stdout}"},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Steps, 2)
+	assert.Contains(t, result.Steps[1].Output, "hello-from-setup")
+}
+
+// ── M5: parallel step groups ───────────────────────────────────────────────────
+
+func TestParallelGroupsBasicExecution(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "parallel-basic",
+		Steps: []Step{
+			{Name: "setup", Run: "echo ready"},
+		},
+		Parallel: [][]Step{
+			{
+				{Name: "a", Run: "echo alpha"},
+				{Name: "b", Run: "echo beta"},
+			},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result.Status)
+	// setup + 2 parallel = 3 steps
+	require.Len(t, result.Steps, 3)
+	assert.Equal(t, "ok", result.Steps[1].Status)
+	assert.Equal(t, "ok", result.Steps[2].Status)
+}
+
+func TestParallelPrevRefersToLastSequential(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "parallel-prev",
+		Steps: []Step{
+			{Name: "setup", Run: "echo hello"},
+		},
+		Parallel: [][]Step{
+			{
+				{Name: "use-prev", Run: "echo saw-{prev.stdout}"},
+			},
+		},
+	}
+	result, err := Run(context.Background(), p, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Steps, 2)
+	assert.Contains(t, result.Steps[1].Output, "saw-hello")
+}
+
+func TestParallelNameCollisionValidation(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "parallel-collision",
+		Steps: []Step{
+			{Name: "foo", Run: "echo 1"},
+		},
+		Parallel: [][]Step{
+			{
+				{Name: "foo", Run: "echo 2"},
+			},
+		},
+	}
+	err := p.Validate(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate step name")
+}
+
+func TestParallelDryRun(t *testing.T) {
+	t.Parallel()
+	p := &Pipeline{
+		Name: "parallel-dry",
+		Parallel: [][]Step{
+			{
+				{Name: "a", Run: "echo alpha"},
+				{Name: "b", Run: "echo beta"},
+			},
+		},
+		Finally: []Step{
+			{Name: "cleanup", Run: "echo done"},
+		},
+	}
+	result, err := DryRun(p, nil)
+	require.NoError(t, err)
+	// Should show parallel + finally steps
+	found := 0
+	for _, sr := range result.Steps {
+		if strings.HasPrefix(sr.Name, "parallel:") {
+			found++
+		}
+	}
+	assert.Equal(t, 2, found, "should have 2 parallel step previews")
+	// Should show finally step
+	foundFinally := false
+	for _, sr := range result.Steps {
+		if sr.Name == "finally:cleanup" {
+			foundFinally = true
+		}
+	}
+	assert.True(t, foundFinally, "should have finally step preview")
+}

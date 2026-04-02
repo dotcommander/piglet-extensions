@@ -16,6 +16,9 @@ type Pipeline struct {
 	Params      map[string]Param `yaml:"params"      json:"params,omitzero"`
 	Steps       []Step           `yaml:"steps"        json:"steps"`
 	Concurrency int              `yaml:"concurrency"  json:"concurrency,omitzero"` // for loop/each parallelism
+	OnError     string           `yaml:"on_error"     json:"on_error,omitempty"`   // "halt" (default) | "continue"
+	Finally     []Step           `yaml:"finally"      json:"finally,omitzero"`
+	Parallel    [][]Step         `yaml:"parallel"     json:"parallel,omitzero"`
 }
 
 // Param is a pipeline parameter with optional default.
@@ -31,15 +34,17 @@ type Step struct {
 	Run          string            `yaml:"run"           json:"run"`
 	Description  string            `yaml:"description"   json:"description,omitempty"`
 	Shell        string            `yaml:"shell"         json:"shell,omitempty"`
-	Timeout      int               `yaml:"timeout"       json:"timeout,omitempty"`       // seconds
+	Timeout      int               `yaml:"timeout"       json:"timeout,omitempty"` // seconds
 	Retries      int               `yaml:"retries"       json:"retries,omitempty"`
-	RetryDelay   int               `yaml:"retry_delay"   json:"retry_delay,omitempty"`   // seconds
+	RetryDelay   int               `yaml:"retry_delay"   json:"retry_delay,omitempty"` // seconds
 	AllowFailure bool              `yaml:"allow_failure" json:"allow_failure,omitempty"`
 	Each         []string          `yaml:"each"          json:"each,omitempty"`
 	Loop         map[string]any    `yaml:"loop"          json:"loop,omitempty"`
 	WorkDir      string            `yaml:"workdir"       json:"workdir,omitempty"`
 	Env          map[string]string `yaml:"env"           json:"env,omitempty"`
 	When         string            `yaml:"when"          json:"when,omitempty"`
+	MaxOutput    int               `yaml:"max_output"    json:"max_output,omitempty"`    // bytes, 0 = unlimited
+	OutputFormat string            `yaml:"output_format" json:"output_format,omitempty"` // "text" | "json"
 }
 
 // Status constants for step and pipeline results.
@@ -60,6 +65,7 @@ type StepResult struct {
 	DurationMS int64  `json:"duration_ms"`
 	Iterations int    `json:"iterations,omitempty"`
 	RetryCount int    `json:"retry_count,omitempty"`
+	Parsed     any    `json:"parsed,omitempty"` // pre-parsed JSON when OutputFormat="json"
 }
 
 // PipelineResult is the aggregate outcome of a pipeline run.
@@ -77,15 +83,31 @@ func (p *Pipeline) defaults() {
 		p.Concurrency = 4
 	}
 	for i := range p.Steps {
-		if p.Steps[i].Shell == "" {
-			p.Steps[i].Shell = "sh"
+		applyStepDefaults(&p.Steps[i])
+	}
+	for i := range p.Finally {
+		applyStepDefaults(&p.Finally[i])
+	}
+	for _, group := range p.Parallel {
+		for i := range group {
+			applyStepDefaults(&group[i])
 		}
-		if p.Steps[i].Timeout <= 0 {
-			p.Steps[i].Timeout = 30
-		}
-		if p.Steps[i].RetryDelay <= 0 && p.Steps[i].Retries > 0 {
-			p.Steps[i].RetryDelay = 5
-		}
+	}
+	if p.OnError == "" {
+		p.OnError = "halt"
+	}
+}
+
+// applyStepDefaults fills zero-value fields on a single step.
+func applyStepDefaults(s *Step) {
+	if s.Shell == "" {
+		s.Shell = "sh"
+	}
+	if s.Timeout <= 0 {
+		s.Timeout = 30
+	}
+	if s.RetryDelay <= 0 && s.Retries > 0 {
+		s.RetryDelay = 5
 	}
 }
 
@@ -102,8 +124,8 @@ func (p *Pipeline) Validate(params map[string]string) error {
 	if p.Name == "" {
 		return fmt.Errorf("pipeline name is required")
 	}
-	if len(p.Steps) == 0 {
-		return fmt.Errorf("pipeline %q has no steps", p.Name)
+	if len(p.Steps) == 0 && len(p.Parallel) == 0 {
+		return fmt.Errorf("pipeline %q has no steps or parallel groups", p.Name)
 	}
 	for name, param := range p.Params {
 		if param.Required {
@@ -114,15 +136,77 @@ func (p *Pipeline) Validate(params map[string]string) error {
 			}
 		}
 	}
-	for i, step := range p.Steps {
-		if step.Name == "" {
+	switch p.OnError {
+	case "", "halt", "continue":
+		// valid
+	default:
+		return fmt.Errorf("invalid on_error %q (must be halt or continue)", p.OnError)
+	}
+
+	// Collect names for collision detection across Steps, Parallel, Finally.
+	totalSteps := len(p.Steps) + len(p.Finally)
+	for _, g := range p.Parallel {
+		totalSteps += len(g)
+	}
+	names := make(map[string]bool, totalSteps)
+	for i, s := range p.Steps {
+		if s.Name == "" {
 			return fmt.Errorf("step %d has no name", i)
 		}
+		if s.Run == "" {
+			return fmt.Errorf("step %q has no run command", s.Name)
+		}
+		if names[s.Name] {
+			return fmt.Errorf("duplicate step name %q", s.Name)
+		}
+		names[s.Name] = true
+		if err := validateStepFormat(s.Name, s.OutputFormat); err != nil {
+			return err
+		}
+	}
+	for gi, group := range p.Parallel {
+		for i, step := range group {
+			if step.Name == "" {
+				return fmt.Errorf("parallel group %d step %d has no name", gi, i)
+			}
+			if step.Run == "" {
+				return fmt.Errorf("parallel step %q has no run command", step.Name)
+			}
+			if names[step.Name] {
+				return fmt.Errorf("parallel group %d has duplicate step name %q", gi, step.Name)
+			}
+			names[step.Name] = true
+			if err := validateStepFormat(step.Name, step.OutputFormat); err != nil {
+				return err
+			}
+		}
+	}
+	for _, step := range p.Finally {
+		if step.Name == "" {
+			return fmt.Errorf("finally step has no name")
+		}
 		if step.Run == "" {
-			return fmt.Errorf("step %q has no run command", step.Name)
+			return fmt.Errorf("finally step %q has no run command", step.Name)
+		}
+		if names[step.Name] {
+			return fmt.Errorf("finally has duplicate step name %q", step.Name)
+		}
+		names[step.Name] = true
+		if err := validateStepFormat(step.Name, step.OutputFormat); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// validateStepFormat checks that a step's output_format is valid.
+func validateStepFormat(stepName, format string) error {
+	switch format {
+	case "", "text", "json":
+		return nil
+	default:
+		return fmt.Errorf("step %q has invalid output_format %q (must be text or json)", stepName, format)
+	}
 }
 
 // MergeParams merges pipeline defaults with user-supplied overrides.
