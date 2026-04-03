@@ -10,7 +10,7 @@ import (
 
 const refreshTimeout = 10 * time.Second
 
-// Register registers the modelsdev extension's OnInit handler.
+// Register registers the modelsdev extension's OnInit handler and commands.
 func Register(e *sdk.Extension) {
 	e.OnInit(func(x *sdk.Extension) {
 		start := time.Now()
@@ -26,18 +26,26 @@ func Register(e *sdk.Extension) {
 			ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
 			defer cancel()
 
-			updated, err := Refresh(ctx)
-			if err != nil {
+			if _, err := Refresh(ctx, x); err != nil {
 				x.Log("warn", "modelsdev: "+err.Error())
-				return
-			}
-			if updated > 0 {
-				if _, err := x.SyncModels(ctx); err != nil {
-					x.Log("warn", "modelsdev sync: "+err.Error())
-				}
 			}
 		}()
 
 		x.Log("debug", fmt.Sprintf("[modelsdev] OnInit complete — refresh running in background (%s)", time.Since(start)))
+	})
+
+	e.RegisterCommand(sdk.CommandDef{
+		Name:        "models-sync",
+		Description: "Fetch latest model data from models.dev and regenerate models.yaml",
+		Handler: func(ctx context.Context, _ string) error {
+			e.ShowMessage("Fetching models from models.dev...")
+			n, err := Refresh(ctx, e)
+			if err != nil {
+				e.ShowMessage("Sync failed: " + err.Error())
+				return nil
+			}
+			e.ShowMessage(fmt.Sprintf("models.yaml regenerated — %d model(s) loaded", n))
+			return nil
+		},
 	})
 }

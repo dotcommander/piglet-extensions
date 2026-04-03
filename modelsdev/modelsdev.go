@@ -7,10 +7,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
-	"gopkg.in/yaml.v3"
+	"github.com/dotcommander/piglet/sdk"
 )
 
 const (
@@ -50,22 +51,6 @@ type modelLimit struct {
 	Output  int `json:"output"`
 }
 
-// models.yaml types (mirrors piglet's provider/registry.go format).
-
-type modelsFile struct {
-	Models []modelEntry `yaml:"models"`
-}
-
-type modelEntry struct {
-	ID            string `yaml:"id"`
-	Name          string `yaml:"name"`
-	Provider      string `yaml:"provider"`
-	API           string `yaml:"api"`
-	BaseURL       string `yaml:"baseUrl,omitempty"`
-	ContextWindow int    `yaml:"contextWindow"`
-	MaxTokens     int    `yaml:"maxTokens"`
-}
-
 // cache is the on-disk format for the API response cache.
 type cache struct {
 	FetchedAt time.Time   `json:"fetched_at"`
@@ -81,83 +66,41 @@ func CacheStale() bool {
 	return time.Since(c.FetchedAt) > cacheMaxAge
 }
 
-// Refresh fetches the models.dev API, merges updates into the existing
-// models.yaml, and writes back. Returns the number of updated models.
-func Refresh(ctx context.Context) (int, error) {
-	return RefreshFromURL(ctx, loadModelsdevConfig())
+// FetchOverrides fetches the models.dev API and returns a map of overrides
+// keyed by "provider/id" (lowercased). The host uses these to regenerate
+// models.yaml from its embedded curated list, preserving cost and metadata.
+func FetchOverrides(ctx context.Context) (map[string]sdk.ModelOverride, error) {
+	return fetchOverridesFromURL(ctx, loadModelsdevConfig())
 }
 
-// RefreshFromURL is like Refresh but fetches from the given URL (for testing).
-func RefreshFromURL(ctx context.Context, url string) (int, error) {
+func fetchOverridesFromURL(ctx context.Context, url string) (map[string]sdk.ModelOverride, error) {
 	data, err := fetch(ctx, url)
 	if err != nil {
-		return 0, fmt.Errorf("fetch models.dev: %w", err)
+		return nil, fmt.Errorf("fetch models.dev: %w", err)
 	}
 
-	// Cache write failure is non-fatal; next CacheStale check will refetch.
 	_ = writeCache(&cache{FetchedAt: time.Now(), Data: data})
 
-	// Read existing models.yaml
-	modPath, err := modelsPath()
-	if err != nil {
-		return 0, fmt.Errorf("models path: %w", err)
-	}
-
-	raw, err := os.ReadFile(modPath)
-	if err != nil {
-		return 0, fmt.Errorf("read models.yaml: %w", err)
-	}
-
-	var file modelsFile
-	if err := yaml.Unmarshal(raw, &file); err != nil {
-		return 0, fmt.Errorf("parse models.yaml: %w", err)
-	}
-
-	// Index API data by provider/id
 	apiIndex := indexAPI(data)
-
-	// Merge: update existing models, never add new ones
-	updated := 0
-	for i := range file.Models {
-		m := &file.Models[i]
-		key := m.Provider + "/" + m.ID
-		api, ok := apiIndex[key]
-		if !ok {
-			continue
-		}
-
-		changed := false
-		if api.Limit.Context > 0 && api.Limit.Context != m.ContextWindow {
-			m.ContextWindow = api.Limit.Context
-			changed = true
-		}
-		if api.Limit.Output > 0 && api.Limit.Output != m.MaxTokens {
-			m.MaxTokens = api.Limit.Output
-			changed = true
-		}
-		if api.Name != "" && api.Name != m.Name {
-			m.Name = api.Name
-			changed = true
-		}
-		if changed {
-			updated++
+	overrides := make(map[string]sdk.ModelOverride, len(apiIndex))
+	for key, md := range apiIndex {
+		overrides[key] = sdk.ModelOverride{
+			Name:          md.Name,
+			ContextWindow: md.Limit.Context,
+			MaxTokens:     md.Limit.Output,
 		}
 	}
+	return overrides, nil
+}
 
-	if updated == 0 {
-		return 0, nil
-	}
-
-	// Write updated models.yaml atomically
-	out, err := yaml.Marshal(&file)
+// Refresh fetches API data and writes models.yaml via the host RPC,
+// preserving cost data and metadata from the embedded curated list.
+func Refresh(ctx context.Context, ext *sdk.Extension) (int, error) {
+	overrides, err := FetchOverrides(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("marshal models.yaml: %w", err)
+		return 0, err
 	}
-	if err := xdg.WriteFileAtomic(modPath, out); err != nil {
-		return 0, fmt.Errorf("write models.yaml: %w", err)
-	}
-
-	return updated, nil
+	return ext.WriteModels(ctx, overrides)
 }
 
 func fetch(ctx context.Context, url string) (apiResponse, error) {
@@ -184,22 +127,37 @@ func fetch(ctx context.Context, url string) (apiResponse, error) {
 	return result, nil
 }
 
+// canonicalProvider maps models.dev provider keys to the canonical names
+// used in piglet's curated model list. The API may list the same models
+// under multiple provider keys (e.g. "zai-coding-plan", "zhipuai-coding-plan"
+// both map to our "zai" provider).
+var canonicalProvider = map[string]string{
+	"zai":                 "zai",
+	"zai-coding-plan":     "zai",
+	"zhipuai-coding-plan": "zai",
+	"anthropic":           "anthropic",
+	"openai":              "openai",
+	"google":              "google",
+	"xai":                 "xai",
+	"groq":                "groq",
+}
+
 func indexAPI(data apiResponse) map[string]modelData {
 	index := make(map[string]modelData)
 	for provName, prov := range data {
+		canonical, ok := canonicalProvider[provName]
+		if !ok {
+			continue // skip providers we don't track
+		}
 		for _, md := range prov.Models {
-			index[provName+"/"+md.ID] = md
+			key := canonical + "/" + strings.ToLower(md.ID)
+			// First match wins — prefer the primary provider key
+			if _, exists := index[key]; !exists {
+				index[key] = md
+			}
 		}
 	}
 	return index
-}
-
-func modelsPath() (string, error) {
-	dir, err := xdg.ConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "models.yaml"), nil
 }
 
 func cachePath() (string, error) {

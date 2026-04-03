@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,22 +109,4 @@ func Register(e *sdk.Extension) {
 		},
 	})
 
-	e.RegisterCommand(sdk.CommandDef{
-		Name:        "models-sync",
-		Description: "Sync model catalog from models.dev",
-		Handler: func(ctx context.Context, _ string) error {
-			e.ShowMessage("Syncing models from models.dev...")
-			updated, err := e.SyncModels(ctx)
-			if err != nil {
-				e.ShowMessage("Sync failed: " + err.Error())
-				return nil
-			}
-			if updated == 0 {
-				e.ShowMessage("All models up to date.")
-			} else {
-				e.ShowMessage(fmt.Sprintf("Sync complete: %d model(s) updated", updated))
-			}
-			return nil
-		},
-	})
 }
