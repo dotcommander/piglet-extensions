@@ -29,6 +29,23 @@ const (
 	cacheTTLSearch = time.Hour
 )
 
+const truncationNote = "\n\n[Content truncated at 100KB]"
+
+// buildFetchResult formats a fetched page into the standard output format
+// with optional title/URL header and truncation at maxBodyBytes.
+func buildFetchResult(title, rawURL, body string) string {
+	var sb strings.Builder
+	if title != "" {
+		fmt.Fprintf(&sb, "Title: %s\n\nURL Source: %s\n\n", title, rawURL)
+	}
+	sb.WriteString(body)
+	content := sb.String()
+	if len(content) > maxBodyBytes {
+		content = content[:maxBodyBytes] + truncationNote
+	}
+	return content
+}
+
 // SearchResult holds a single search result.
 type SearchResult struct {
 	Title       string `json:"title"`
@@ -56,6 +73,42 @@ func (e *HTTPError) Unwrap() error {
 	return e.Err
 }
 
+// llmRefusalPrefixes detects LLM responses that are refusals rather than content.
+// These should not be cached or returned as successful fetches.
+var llmRefusalPrefixes = []string{
+	"i am unable to access",
+	"i cannot access",
+	"i'm unable to access",
+	"i can't access",
+	"i do not have the ability to access",
+	"i don't have access to",
+	"as an ai",
+	"i cannot browse",
+	"i'm not able to access",
+	"i cannot visit",
+	"i cannot fetch",
+	"i cannot open",
+	"i cannot retrieve",
+	"i'm not able to browse",
+}
+
+// isLLMRefusal returns true if the content looks like an LLM refusal rather
+// than actual page content. This prevents caching garbage responses.
+func isLLMRefusal(content string) bool {
+	// Only lowercase the first 100 bytes — all refusal prefixes are short.
+	s := strings.TrimSpace(content)
+	if len(s) > 100 {
+		s = s[:100]
+	}
+	lower := strings.ToLower(s)
+	for _, prefix := range llmRefusalPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // isRecoverable returns true if the error might succeed with a different provider.
 func isRecoverable(err error) bool {
 	if err == nil {
@@ -68,8 +121,15 @@ func isRecoverable(err error) bool {
 		if httpErr.StatusCode == 0 {
 			return true
 		}
-		// 4xx client errors (except 401, 403, 429) are not recoverable
-		if httpErr.StatusCode >= 400 && httpErr.StatusCode < 500 && httpErr.StatusCode != 401 && httpErr.StatusCode != 403 && httpErr.StatusCode != 429 {
+		// 2xx "soft" failures (e.g. 204 = page needs JS) are always recoverable.
+		if httpErr.StatusCode >= 200 && httpErr.StatusCode < 300 {
+			return true
+		}
+		// 4xx client errors (except 401, 403, 429, 451) are not recoverable.
+		// 451 (Unavailable For Legal Reasons) is often a proxy/reader issue, not the target URL.
+		if httpErr.StatusCode >= 400 && httpErr.StatusCode < 500 &&
+			httpErr.StatusCode != 401 && httpErr.StatusCode != 403 &&
+			httpErr.StatusCode != 429 && httpErr.StatusCode != 451 {
 			return false
 		}
 		// 5xx server errors and 429 rate limits are recoverable
@@ -118,50 +178,72 @@ func New(fetchProviders []FetchProvider, searchProviders []SearchProvider, githu
 }
 
 // NewWithConfig creates a Client with providers based on the given config.
-// Providers are added in order: Jina (always) -> Perplexity (if API key) -> Gemini (if API key).
+// Fetch priority: Colly → Jina → Rod → agent-browser → Gemini → Perplexity.
+// Search priority: Brave → Exa → Gemini → Perplexity → Jina → DuckDuckGo.
 func NewWithConfig(cfg *Config) *Client {
 	var fetchProviders []FetchProvider
 	var searchProviders []SearchProvider
 
-	// Always add Jina as the primary provider
-	jinaKey := cfg.JinaAPIKey
-	if jinaKey == "" {
-		jinaKey = os.Getenv("JINA_API_KEY")
-	}
-	jina := NewJinaProvider(jinaKey, cfg.Jina)
-	fetchProviders = append(fetchProviders, jina)
-	searchProviders = append(searchProviders, jina)
+	// --- Resolve all API keys (config then env) ---
 
-	// Add Perplexity if API key is configured
-	if perplexity := NewPerplexityProvider(cfg.PerplexityAPIKey, cfg.Perplexity); perplexity != nil {
-		fetchProviders = append(fetchProviders, perplexity)
-		searchProviders = append(searchProviders, perplexity)
-	}
-
-	// Add Gemini if API key is configured
-	if gemini := NewGeminiProvider(cfg.GeminiAPIKey, cfg.Gemini); gemini != nil {
-		fetchProviders = append(fetchProviders, gemini)
-		searchProviders = append(searchProviders, gemini)
-	}
-
-	// Add Brave if API key is configured (search only)
-	braveKey := cfg.BraveAPIKey
-	if braveKey == "" {
-		braveKey = os.Getenv("BRAVE_API_KEY")
-	}
-	if brave := NewBraveProvider(braveKey, cfg.Brave); brave != nil {
-		searchProviders = append(searchProviders, brave)
-	}
-
-	// Add Exa if API key is configured
 	exaKey := cfg.ExaAPIKey
 	if exaKey == "" {
 		exaKey = os.Getenv("EXA_API_KEY")
 	}
+	braveKey := cfg.BraveAPIKey
+	if braveKey == "" {
+		braveKey = os.Getenv("BRAVE_API_KEY")
+	}
+	geminiKey := cfg.GeminiAPIKey
+	if geminiKey == "" {
+		geminiKey = os.Getenv("GEMINI_API_KEY")
+	}
+	perplexityKey := cfg.PerplexityAPIKey
+	if perplexityKey == "" {
+		perplexityKey = os.Getenv("PERPLEXITY_API_KEY")
+	}
+	jinaKey := cfg.JinaAPIKey
+	if jinaKey == "" {
+		jinaKey = os.Getenv("JINA_API_KEY")
+	}
+
+	// --- Create shared provider instances ---
+
+	jina := NewJinaProvider(jinaKey, cfg.Jina)
+	gemini := NewGeminiProvider(geminiKey, cfg.Gemini)
+	perplexity := NewPerplexityProvider(perplexityKey, cfg.Perplexity)
+
+	// --- Fetch providers: local fetchers → reader proxy → headless browser → LLM ---
+	// Exa and Brave are search-only; they don't belong in the fetch chain.
+
+	fetchProviders = append(fetchProviders, NewCollyProvider())
+	fetchProviders = append(fetchProviders, jina)
+	fetchProviders = append(fetchProviders, NewRodProvider())
+	if ab := NewAgentBrowserProvider(); ab != nil {
+		fetchProviders = append(fetchProviders, ab)
+	}
+	if gemini != nil {
+		fetchProviders = append(fetchProviders, gemini)
+	}
+	if perplexity != nil {
+		fetchProviders = append(fetchProviders, perplexity)
+	}
+
+	// --- Search providers: structured APIs first, then LLM, then Jina ---
+
+	if brave := NewBraveProvider(braveKey, cfg.Brave); brave != nil {
+		searchProviders = append(searchProviders, brave)
+	}
 	if exa := NewExaProvider(exaKey, cfg.Exa); exa != nil {
-		fetchProviders = append(fetchProviders, exa)
 		searchProviders = append(searchProviders, exa)
 	}
+	if gemini != nil {
+		searchProviders = append(searchProviders, gemini)
+	}
+	if perplexity != nil {
+		searchProviders = append(searchProviders, perplexity)
+	}
+	searchProviders = append(searchProviders, jina)
 
 	// Create GitHub client if enabled
 	var github *GitHubClient

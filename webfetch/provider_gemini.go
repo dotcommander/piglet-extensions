@@ -149,6 +149,17 @@ func (g *GeminiProvider) Fetch(ctx context.Context, rawURL string) (string, erro
 	}
 
 	content := geminiResp.Candidates[0].Content.Parts[0].Text
+
+	// Detect refusal responses — Gemini sometimes returns "I cannot access URLs"
+	// as a valid 200 response. Treat these as errors so the chain falls through.
+	if isLLMRefusal(content) {
+		return "", &HTTPError{
+			URL:        rawURL,
+			StatusCode: 204,
+			Err:        fmt.Errorf("gemini refused to fetch: content appears to be a refusal"),
+		}
+	}
+
 	if len(content) > maxBodyBytes {
 		content = content[:maxBodyBytes] + "\n\n[Content truncated at 100KB]"
 	}

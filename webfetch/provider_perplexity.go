@@ -147,6 +147,17 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 	}
 
 	content := perplexResp.Choices[0].Message.Content
+
+	// Detect refusal responses — LLMs sometimes return "I cannot access URLs"
+	// as a valid response. Treat these as errors so the chain falls through.
+	if isLLMRefusal(content) {
+		return "", &HTTPError{
+			URL:        rawURL,
+			StatusCode: 204,
+			Err:        fmt.Errorf("perplexity refused to fetch: content appears to be a refusal"),
+		}
+	}
+
 	if len(content) > maxBodyBytes {
 		content = content[:maxBodyBytes] + "\n\n[Content truncated at 100KB]"
 	}
