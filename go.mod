@@ -6,8 +6,8 @@ toolchain go1.26.1
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
-	github.com/dotcommander/piglet v0.18.6
-	github.com/dotcommander/piglet/sdk v1.6.0
+	github.com/dotcommander/piglet v0.20.0
+	github.com/dotcommander/piglet/sdk v1.7.0
 	github.com/go-rod/rod v0.116.2
 	github.com/gocolly/colly/v2 v2.3.0
 	github.com/google/uuid v1.6.0
