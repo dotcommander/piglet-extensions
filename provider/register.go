@@ -62,9 +62,9 @@ func Register(e *sdk.Extension) {
 		var prov core.StreamProvider
 		switch model.API {
 		case core.APIAnthropic:
-			prov = pigletprovider.NewAnthropic(model, apiKeyFn)
+			prov = NewAnthropic(model, apiKeyFn)
 		case core.APIGoogle:
-			prov = pigletprovider.NewGoogle(model, apiKeyFn)
+			prov = NewGoogle(model, apiKeyFn)
 		default:
 			// APIOpenAI and any OpenAI-compatible endpoints
 			prov = pigletprovider.NewOpenAI(model, apiKeyFn)
