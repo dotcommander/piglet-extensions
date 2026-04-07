@@ -13,10 +13,10 @@ import (
 
 func main() {
 	e := sdk.New("pack-code", "0.1.0")
-	safety.Register(e, "lsp", lsp.Register)
+	safety.RegisterWithVersion(e, "lsp", "0.2.0", lsp.Register)
 	safety.RegisterWithVersion(e, "repomap", "0.2.0", repomap.Register)
 	safety.Register(e, "sift", sift.Register)
-	safety.Register(e, "plan", plan.Register)
+	safety.RegisterWithVersion(e, "plan", "0.2.0", plan.Register)
 	safety.Register(e, "suggest", suggest.Register)
 	safety.Register(e, "toolsearch", toolsearch.Register)
 	e.Run()

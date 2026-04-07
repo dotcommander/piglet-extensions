@@ -22,10 +22,10 @@ func main() {
 	safety.Register(e, "gitcontext", gitcontext.Register)
 	safety.RegisterWithVersion(e, "behavior", "0.2.0", behavior.Register)
 	safety.Register(e, "prompts", prompts.Register)
-	safety.Register(e, "session-tools", sessiontools.Register)
+	safety.RegisterWithVersion(e, "session-tools", "0.3.0", sessiontools.Register)
 	safety.Register(e, "inbox", inbox.Register)
 	safety.Register(e, "distill", distill.Register)
 	safety.Register(e, "recall", recall.Register)
-	safety.Register(e, "route", route.Register)
+	safety.RegisterWithVersion(e, "route", "0.2.0", route.Register)
 	e.Run()
 }
