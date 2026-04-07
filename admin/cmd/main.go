@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("admin", "0.1.0")
-	admin.Register(e)
+	e := sdk.New("admin", "0.2.0")
+	admin.Register(e, "0.2.0")
 	e.Run()
 }

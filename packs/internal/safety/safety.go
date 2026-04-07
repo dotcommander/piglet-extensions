@@ -16,3 +16,13 @@ func Register(e *sdk.Extension, name string, fn func(e *sdk.Extension)) {
 	}()
 	fn(e)
 }
+
+// RegisterWithVersion is like Register but for extensions that accept a version string.
+func RegisterWithVersion(e *sdk.Extension, name, version string, fn func(e *sdk.Extension, version string)) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("extension register panicked", "name", name, "panic", r)
+		}
+	}()
+	fn(e, version)
+}

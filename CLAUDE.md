@@ -31,6 +31,7 @@ Standalone command-line tools built from `cmd/`. Install with `make cli`.
 | `confirm` | Minimal verify: affected package analysis → scoped typecheck + test + lint |
 | `depgraph` | Dependency graph queries: deps, rdeps, impact, cycles, shortest path |
 | `piglet-cron` | Run scheduled cron tasks (daemon mode for launchd) |
+| `extest` | Exercise extension binaries via JSON-RPC for testing |
 
 ### repomap
 
@@ -164,6 +165,64 @@ piglet-cron run [flags]
 ```
 
 Intended for launchd: acquire a process lock on startup, run due tasks, then exit. Another instance running is not an error (exits 0).
+
+### extest
+
+```bash
+extest [flags] <extension-binary>
+  -cwd path    Working directory sent to extension (default: .)
+  -e tool      Execute a tool by name
+  -a args      Arguments: JSON for tools/events, text for commands
+  -c command   Execute a slash command by name
+  -E event     Dispatch an event by type (e.g. EventAgentEnd)
+  -m mode      Output mode: auto, show, json, trace (default: auto)
+  -t seconds   Response timeout (default: 5)
+  -mock text   Mock response for host/chat RPC (default: "Test session title", empty to disable)
+  -i           Interactive REPL mode
+```
+
+```bash
+# Init only — see what an extension registers (name, version, tool/command summary)
+extest ~/.config/piglet/extensions/tasklist/tasklist
+
+# Test a tool
+extest -m show -e tasklist_add -a '{"title":"Fix bug"}' ~/.config/piglet/extensions/tasklist/tasklist
+
+# Test a slash command with args
+extest -m show -c config -a "setup" ~/.config/piglet/extensions/admin/admin
+
+# Test an event handler
+extest -m show -E EventAgentEnd -a '{"Messages":[{"role":"user","content":"Fix login"},{"role":"assistant","content":"Done"}]}' ~/.config/piglet/extensions/autotitle/autotitle
+
+# Full protocol trace (raw JSON lines)
+extest -m trace -e tasklist_list -a '{}' ~/.config/piglet/extensions/tasklist/tasklist
+
+# Interactive mode
+extest -i ~/.config/piglet/extensions/tasklist/tasklist
+```
+
+### Testing Event Handlers
+
+Event handlers are the hardest extension capability to test because they have no user-facing interface — they react to host lifecycle events silently. Use extest's `-E` flag to simulate event dispatch:
+
+```bash
+# 1. Check what events an extension handles
+extest ~/.config/piglet/extensions/autotitle/autotitle
+# Output: [eventHandler] autotitle — events: [EventAgentEnd], priority: 100
+
+# 2. Check handler state via status tool (if available)
+extest -m show -e autotitle_status ~/.config/piglet/extensions/autotitle/autotitle
+# Output: handler state = "waiting"
+
+# 3. Dispatch the event with realistic data
+extest -m show -E EventAgentEnd -a '{"Messages":[{"role":"user","content":"Fix login"},{"role":"assistant","content":"Done"}]}' ~/.config/piglet/extensions/autotitle/autotitle
+
+# 4. Verify handler fired (re-check status)
+extest -m show -e autotitle_status ~/.config/piglet/extensions/autotitle/autotitle
+# Output: handler state = "fired (title generated)"
+```
+
+In interactive mode, use `event <type> <json>` to dispatch events and `tool <name> <json>` to check status.
 
 ## Architecture
 

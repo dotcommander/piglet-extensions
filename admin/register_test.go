@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,22 +10,75 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConfigFiles(t *testing.T) {
+func TestScanConfigDir_ExistingDir(t *testing.T) {
 	t.Parallel()
 
-	files := configFiles("/tmp/test")
+	dir := t.TempDir()
+	// Create known files
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("key: val"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sessions"), 0o755))
+	// Create an extra file
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "custom.yaml"), []byte(""), 0o644))
 
-	require.Len(t, files, 5, "expected 5 config file entries")
+	files := scanConfigDir(dir)
 
-	labels := make([]string, len(files))
-	for i, f := range files {
-		labels[i] = f.label
-	}
-	assert.Equal(t, []string{"config.yaml", "behavior.md", "auth.json", "models.yaml", "sessions/"}, labels)
+	// Known files come first
+	require.Len(t, files, 6) // 5 known + 1 extra
+	assert.Equal(t, "config.yaml", files[0].label)
+	assert.Equal(t, "custom.yaml", files[5].label)
+}
 
+func TestScanConfigDir_NonexistentDir(t *testing.T) {
+	t.Parallel()
+
+	files := scanConfigDir("/nonexistent/path")
+	assert.Len(t, files, 5) // defaults
 	for _, f := range files {
-		assert.Equal(t, filepath.Join("/tmp/test", f.label), f.path)
+		assert.Equal(t, "(not created)", formatFileStatus(f))
 	}
+}
+
+func TestScanConfigDir_HiddenFilesExcluded(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".hidden"), []byte(""), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "visible.yaml"), []byte(""), 0o644))
+
+	files := scanConfigDir(dir)
+	for _, f := range files {
+		assert.NotContains(t, f.label, ".hidden")
+	}
+}
+
+func TestScanConfigDir_DirectoriesGetSlashSuffix(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "mydata"), 0o755))
+
+	files := scanConfigDir(dir)
+	var labels []string
+	for _, f := range files {
+		labels = append(labels, f.label)
+	}
+	assert.Contains(t, labels, "mydata/")
+}
+
+func TestScanConfigDir_SortedExtras(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	for _, name := range []string{"zebra.yaml", "alpha.yaml", "mid.yaml"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(""), 0o644))
+	}
+
+	files := scanConfigDir(dir)
+	// Extras start after the 5 known entries
+	extras := files[5:]
+	require.Len(t, extras, 3)
+	assert.True(t, extras[0].label < extras[1].label)
+	assert.True(t, extras[1].label < extras[2].label)
 }
 
 func TestFormatFileStatus_Existing(t *testing.T) {
@@ -66,8 +120,10 @@ func TestRunSetup_CreatesFiles(t *testing.T) {
 
 	runSetup(mock, dir)
 
-	assert.Equal(t, 1, len(messages), "expected one status message")
+	// Two messages: creation report + listing
+	assert.Len(t, messages, 2)
 	assert.Contains(t, messages[0], "Created:")
+	assert.Contains(t, messages[1], "Config directory:")
 
 	for _, name := range []string{"config.yaml", "behavior.md"} {
 		assert.FileExists(t, filepath.Join(dir, name))
@@ -89,8 +145,9 @@ func TestRunSetup_AlreadyExists(t *testing.T) {
 
 	runSetup(mock, dir)
 
-	assert.Equal(t, 1, len(messages))
+	assert.Len(t, messages, 2)
 	assert.Contains(t, messages[0], "already set up")
+	assert.Contains(t, messages[1], "Config directory:")
 }
 
 func TestRunSetup_Idempotent(t *testing.T) {
@@ -104,6 +161,111 @@ func TestRunSetup_Idempotent(t *testing.T) {
 
 	assert.Contains(t, msgs1[0], "Created:")
 	assert.Contains(t, msgs2[0], "already set up")
+}
+
+func TestConfigCommand_DefaultShowsListing(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("key: val"), 0o644))
+
+	var messages []string
+	mock := &stubExt{messages: &messages}
+
+	handler := configCommand("0.2.0", mock)
+	require.NoError(t, handler(context.Background(), ""))
+	require.Len(t, messages, 1)
+	assert.Contains(t, messages[0], "Config directory:")
+	assert.Contains(t, messages[0], "config.yaml")
+}
+
+func TestConfigCommand_SetupSubcommand(t *testing.T) {
+	t.Parallel()
+
+	var messages []string
+	mock := &stubExt{messages: &messages}
+
+	handler := configCommand("0.2.0", mock)
+	require.NoError(t, handler(context.Background(), "--version"))
+	require.Len(t, messages, 1)
+	assert.Equal(t, "admin v0.2.0", messages[0])
+}
+
+func TestConfigCommand_VersionFlag(t *testing.T) {
+	t.Parallel()
+
+	var messages []string
+	mock := &stubExt{messages: &messages}
+
+	handler := configCommand("0.2.0", mock)
+	require.NoError(t, handler(context.Background(), "--version"))
+	require.Len(t, messages, 1)
+	assert.Equal(t, "admin v0.2.0", messages[0])
+}
+
+func TestConfigCommand_UnknownArg(t *testing.T) {
+	t.Parallel()
+
+	var messages []string
+	mock := &stubExt{messages: &messages}
+
+	handler := configCommand("0.2.0", mock)
+	require.NoError(t, handler(context.Background(), "garbage"))
+	require.Len(t, messages, 1)
+	assert.Contains(t, messages[0], "Usage:")
+	assert.Contains(t, messages[0], "Unknown argument: garbage")
+}
+
+func TestHandleConfigRead(t *testing.T) {
+	t.Parallel()
+
+	var messages []string
+	mock := &stubExt{messages: &messages}
+
+	// Reads from real config dir — just verify no panic
+	handleConfigRead(mock, "config.yaml")
+}
+
+func TestHandleConfigRead_PathTraversal(t *testing.T) {
+	t.Parallel()
+
+	var messages []string
+	mock := &stubExt{messages: &messages}
+
+	handleConfigRead(mock, "../../etc/passwd")
+	require.Len(t, messages, 1)
+	assert.Contains(t, messages[0], "simple name")
+}
+
+func TestHandleConfigRead_EmptyFilename(t *testing.T) {
+	t.Parallel()
+
+	var messages []string
+	mock := &stubExt{messages: &messages}
+
+	handleConfigRead(mock, "")
+	require.Len(t, messages, 1)
+	assert.Contains(t, messages[0], "Usage:")
+}
+
+func TestToolConfigRead_PathTraversal(t *testing.T) {
+	t.Parallel()
+
+	tool := toolConfigRead()
+	result, err := tool.Execute(context.Background(), map[string]any{"filename": "../secret"})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content[0].Text, "simple name")
+}
+
+func TestToolConfigRead_MissingFilename(t *testing.T) {
+	t.Parallel()
+
+	tool := toolConfigRead()
+	result, err := tool.Execute(context.Background(), map[string]any{})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Contains(t, result.Content[0].Text, "required")
 }
 
 // stubExt captures ShowMessage calls for testing.

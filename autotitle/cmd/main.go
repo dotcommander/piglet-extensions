@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("autotitle", "0.1.0")
-	autotitle.Register(e)
+	e := sdk.New("autotitle", "0.2.0")
+	autotitle.Register(e, "0.2.0")
 	e.Run()
 }

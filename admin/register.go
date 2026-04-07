@@ -4,10 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	sdk "github.com/dotcommander/piglet/sdk"
+
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
-	"github.com/dotcommander/piglet/sdk"
 )
 
 // configFile is a config file entry for display.
@@ -15,15 +17,62 @@ type configFile struct {
 	label, path string
 }
 
-// configFiles returns the known piglet config files for the given directory.
-func configFiles(dir string) []configFile {
-	return []configFile{
-		{"config.yaml", filepath.Join(dir, "config.yaml")},
-		{"behavior.md", filepath.Join(dir, "behavior.md")},
-		{"auth.json", filepath.Join(dir, "auth.json")},
-		{"models.yaml", filepath.Join(dir, "models.yaml")},
-		{"sessions/", filepath.Join(dir, "sessions")},
+// knownConfigFiles maps well-known config files to human-readable labels.
+// Entries shown first even if missing, for discoverability.
+var knownConfigFiles = []struct {
+	name, label string
+	isDir       bool
+}{
+	{"config.yaml", "config.yaml", false},
+	{"behavior.md", "behavior.md", false},
+	{"auth.json", "auth.json", false},
+	{"models.yaml", "models.yaml", false},
+	{"sessions", "sessions/", true},
+}
+
+// scanConfigDir reads the piglet config directory and returns all entries.
+// Well-known files appear first (even if missing), followed by any additional entries.
+func scanConfigDir(dir string) []configFile {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return defaultConfigEntries(dir)
 	}
+
+	var files []configFile
+	shown := make(map[string]bool)
+
+	// Known files first
+	for _, k := range knownConfigFiles {
+		shown[k.name] = true
+		files = append(files, configFile{k.label, filepath.Join(dir, k.name)})
+	}
+
+	// Additional entries sorted alphabetically
+	var extra []configFile
+	for _, entry := range entries {
+		name := entry.Name()
+		if shown[name] || strings.HasPrefix(name, ".") {
+			continue
+		}
+		label := name
+		if entry.IsDir() {
+			label += "/"
+		}
+		extra = append(extra, configFile{label, filepath.Join(dir, name)})
+	}
+	sort.Slice(extra, func(i, j int) bool { return extra[i].label < extra[j].label })
+	files = append(files, extra...)
+
+	return files
+}
+
+// defaultConfigEntries returns the well-known entries when the config dir doesn't exist yet.
+func defaultConfigEntries(dir string) []configFile {
+	files := make([]configFile, len(knownConfigFiles))
+	for i, k := range knownConfigFiles {
+		files[i] = configFile{k.label, filepath.Join(dir, k.name)}
+	}
+	return files
 }
 
 // formatFileStatus returns a human-readable status line for a config file.
@@ -43,7 +92,7 @@ type messenger interface {
 	ShowMessage(msg string)
 }
 
-// runSetup bootstraps the config directory with default files.
+// runSetup bootstraps the config directory with default files, then shows the status listing.
 func runSetup(e messenger, dir string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		e.ShowMessage("Cannot create config dir: " + err.Error())
@@ -70,43 +119,63 @@ func runSetup(e messenger, dir string) {
 	} else {
 		e.ShowMessage("Created: " + strings.Join(created, ", ") + " in " + dir)
 	}
+
+	// Always show listing after setup
+	showConfigListing(e, dir)
 }
 
-// Register registers the admin extension's commands.
-func Register(e *sdk.Extension) {
+// showConfigListing displays all config files with their status.
+func showConfigListing(e messenger, dir string) {
+	var b strings.Builder
+	b.WriteString("Config directory: " + dir + "\n")
+	for _, cf := range scanConfigDir(dir) {
+		b.WriteString("  " + cf.label + ":  " + formatFileStatus(cf) + "\n")
+	}
+	e.ShowMessage(b.String())
+}
+
+// configDir returns the piglet config directory or shows an error.
+func configDir(e messenger) (string, bool) {
+	dir, err := xdg.ConfigDir()
+	if err != nil {
+		e.ShowMessage("Cannot determine config dir: " + err.Error())
+		return "", false
+	}
+	return dir, true
+}
+
+// Register registers all admin extension capabilities.
+func Register(e *sdk.Extension, version string) {
+	// Tools for LLM access
+	e.RegisterTool(toolConfigList())
+	e.RegisterTool(toolConfigRead())
+
+	// Primary command with subcommands
 	e.RegisterCommand(sdk.CommandDef{
 		Name:        "config",
-		Description: "Show config paths and status. Use --setup for initial config.",
-		Handler: func(_ context.Context, args string) error {
-			trimmed := strings.TrimSpace(args)
-			if trimmed == "--setup" {
-				dir, err := xdg.ConfigDir()
-				if err != nil {
-					e.ShowMessage("Cannot determine config dir: " + err.Error())
-					return nil
-				}
-				runSetup(e, dir)
-				return nil
-			}
-			if trimmed != "" {
-				e.ShowMessage("Unknown argument: " + trimmed)
-				return nil
-			}
+		Description: "Inspect and manage piglet configuration",
+		Handler:     configCommand(version, e),
+	})
 
-			dir, err := xdg.ConfigDir()
-			if err != nil {
-				e.ShowMessage("Cannot determine config dir: " + err.Error())
-				return nil
+	// Aliases
+	e.RegisterCommand(sdk.CommandDef{
+		Name:        "status",
+		Description: "Show piglet config file status (alias for /config)",
+		Handler: func(_ context.Context, _ string) error {
+			if dir, ok := configDir(e); ok {
+				showConfigListing(e, dir)
 			}
-
-			var b strings.Builder
-			b.WriteString("Config directory: " + dir + "\n")
-			for _, cf := range configFiles(dir) {
-				b.WriteString("  " + cf.label + ":  " + formatFileStatus(cf) + "\n")
-			}
-			e.ShowMessage(b.String())
 			return nil
 		},
 	})
-
+	e.RegisterCommand(sdk.CommandDef{
+		Name:        "settings",
+		Description: "Show piglet config file status (alias for /config)",
+		Handler: func(_ context.Context, _ string) error {
+			if dir, ok := configDir(e); ok {
+				showConfigListing(e, dir)
+			}
+			return nil
+		},
+	})
 }

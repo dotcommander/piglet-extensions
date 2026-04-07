@@ -13,7 +13,7 @@ import (
 
 func main() {
 	e := sdk.New("pack-core", "0.1.0")
-	safety.Register(e, "admin", admin.Register)
+	safety.RegisterWithVersion(e, "admin", "0.2.0", admin.Register)
 	safety.Register(e, "export", export.Register)
 	safety.Register(e, "extensions-list", extlist.Register)
 	safety.Register(e, "undo", undo.Register)

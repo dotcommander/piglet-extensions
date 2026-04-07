@@ -37,6 +37,23 @@ func ReadFile(filename string) string {
 	return string(data)
 }
 
+// ReadExt reads a text file from the extension's namespaced directory.
+// Resolution order:
+//  1. extensions/<extName>/<filename> (new location)
+//  2. <filename> in flat config dir (old location, backward compat)
+//
+// Returns empty string if not found. Does NOT create or migrate.
+func ReadExt(extName, filename string) string {
+	extDir, err := ExtensionDir(extName)
+	if err != nil {
+		return ""
+	}
+	if data, err := os.ReadFile(filepath.Join(extDir, filename)); err == nil {
+		return string(data)
+	}
+	return ReadFile(filename)
+}
+
 // LoadOrCreateExt reads a text file from the extension's namespaced directory.
 // Resolution order:
 //  1. extensions/<extName>/<filename> (new location)

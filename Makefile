@@ -1,6 +1,6 @@
 EXTENSIONS_DIR := $(HOME)/.config/piglet/extensions
 
-EXTENSION_NAMES := safeguard rtk autotitle clipboard skill memory subagent lsp repomap plan bulk cache modelsdev mcp usage gitcontext prompts behavior export admin scaffold undo session-tools background extensions-list pipeline webfetch loop inbox sift provider suggest cron tokengate coordinator route changelog
+EXTENSION_NAMES := safeguard rtk autotitle clipboard skill memory subagent lsp repomap plan bulk cache modelsdev mcp usage gitcontext prompts behavior export admin scaffold undo session-tools background extensions-list pipeline webfetch loop inbox sift provider suggest cron tokengate coordinator route changelog tasklist
 
 .PHONY: extensions clean $(addprefix extensions-,$(EXTENSION_NAMES))
 
@@ -25,7 +25,7 @@ endef
 
 $(foreach ext,$(EXTENSION_NAMES),$(eval $(call EXT_RULE,$(ext))))
 
-CLI_NAMES := repomap pipeline bulk confirm depgraph lspq webfetch memory sift fossil piglet-cron
+CLI_NAMES := repomap pipeline bulk confirm depgraph lspq webfetch memory sift fossil piglet-cron extest
 CLI_DIR := $(HOME)/go/bin
 
 .PHONY: cli $(addprefix cli-,$(CLI_NAMES))
@@ -65,6 +65,9 @@ cli-fossil:
 
 cli-piglet-cron:
 	go build -o $(CLI_DIR)/piglet-cron ./cmd/piglet-cron/
+
+cli-extest:
+	go build -o $(CLI_DIR)/extest ./cmd/extest/
 
 # Pack targets — install path (single binaries bundling multiple extensions)
 .PHONY: packs

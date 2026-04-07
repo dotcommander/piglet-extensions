@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -20,23 +21,27 @@ const (
 	maxTitleRunes = 50
 	chatTimeout   = 10 * time.Second
 	chatModel     = "small"
+	chatMaxTokens = 30
 )
 
-// Register adds autotitle's event handler to the extension.
-func Register(e *sdk.Extension) {
-	var fired atomic.Bool
+// handlerFired tracks whether the title generation has fired this session.
+var handlerFired atomic.Bool
+
+// Register adds autotitle's event handler and status tool to the extension.
+func Register(e *sdk.Extension, version string) {
+	e.RegisterTool(toolStatus(version))
 
 	e.RegisterEventHandler(sdk.EventHandlerDef{
 		Name:     "autotitle",
 		Priority: 100,
 		Events:   []string{"EventAgentEnd"},
 		Handle: func(_ context.Context, _ string, data json.RawMessage) (result *sdk.Action) {
-			if !fired.CompareAndSwap(false, true) {
+			if !handlerFired.CompareAndSwap(false, true) {
 				return nil
 			}
 			defer func() {
 				if result == nil {
-					fired.Store(false)
+					handlerFired.Store(false)
 				}
 			}()
 
@@ -65,7 +70,7 @@ func Register(e *sdk.Extension) {
 				System:    p,
 				Messages:  []sdk.ChatMessage{{Role: "user", Content: content}},
 				Model:     chatModel,
-				MaxTokens: 30,
+				MaxTokens: chatMaxTokens,
 			})
 			if err != nil || resp.Text == "" {
 				return nil
@@ -79,6 +84,42 @@ func Register(e *sdk.Extension) {
 			return nil
 		},
 	})
+}
+
+func toolStatus(version string) sdk.ToolDef {
+	return sdk.ToolDef{
+		Name:        "autotitle_status",
+		Description: "Show autotitle extension status, config, and prompt",
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		PromptHint: "Check autotitle extension status",
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			prompt := xdg.ReadExt("autotitle", "prompt.md")
+			fired := handlerFired.Load()
+
+			state := "waiting"
+			if fired {
+				state = "fired (title generated)"
+			}
+
+			var b strings.Builder
+			fmt.Fprintf(&b, "autotitle v%s\n", version)
+			fmt.Fprintf(&b, "  Handler: %s\n", state)
+			fmt.Fprintf(&b, "  Event:   EventAgentEnd\n")
+			fmt.Fprintf(&b, "  Model:   %s\n", chatModel)
+			fmt.Fprintf(&b, "  Timeout: %s\n", chatTimeout)
+			fmt.Fprintf(&b, "  Max tokens: %d\n", chatMaxTokens)
+			fmt.Fprintf(&b, "  Max title:  %d runes\n", maxTitleRunes)
+			if prompt != "" {
+				fmt.Fprintf(&b, "  Prompt:\n    %s\n", strings.ReplaceAll(prompt, "\n", "\n    "))
+			} else {
+				fmt.Fprintf(&b, "  Prompt: (not installed)\n")
+			}
+			return sdk.TextResult(b.String()), nil
+		},
+	}
 }
 
 func extractFirstExchange(messages []json.RawMessage) (userText, assistantText string) {

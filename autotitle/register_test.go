@@ -1,10 +1,12 @@
 package autotitle
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type testMsg struct {
@@ -136,4 +138,37 @@ func TestTruncateTitle(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestStatusTool_ContainsVersion(t *testing.T) {
+	t.Parallel()
+
+	tool := toolStatus("0.2.0")
+	result, err := tool.Execute(context.Background(), map[string]any{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Content[0].Text, "autotitle v0.2.0")
+}
+
+func TestStatusTool_ShowsConfig(t *testing.T) {
+	t.Parallel()
+
+	tool := toolStatus("0.2.0")
+	result, err := tool.Execute(context.Background(), map[string]any{})
+	require.NoError(t, err)
+	text := result.Content[0].Text
+	assert.Contains(t, text, "EventAgentEnd")
+	assert.Contains(t, text, "Handler:")
+	assert.Contains(t, text, "Model:   small")
+	assert.Contains(t, text, "Timeout: 10s")
+}
+
+func TestStatusTool_ShowsWaitingState(t *testing.T) {
+	t.Parallel()
+
+	handlerFired.Store(false)
+
+	tool := toolStatus("0.2.0")
+	result, err := tool.Execute(context.Background(), map[string]any{})
+	require.NoError(t, err)
+	assert.Contains(t, result.Content[0].Text, "Handler: waiting")
 }
