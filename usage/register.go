@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/dotcommander/piglet/sdk"
 )
@@ -13,13 +12,10 @@ import (
 var stats *SessionStats
 
 // Register registers the usage extension's event handler, command, and tool.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	stats = NewSessionStats()
 
 	e.OnInitAppend(func(x *sdk.Extension) {
-		start := time.Now()
-		x.Log("debug", "[usage] OnInit start")
-
 		x.RegisterEventHandler(sdk.EventHandlerDef{
 			Name:     "usage-tracker",
 			Priority: 100,
@@ -33,8 +29,6 @@ func Register(e *sdk.Extension) {
 				return nil
 			},
 		})
-
-		x.Log("debug", fmt.Sprintf("[usage] OnInit complete (%s)", time.Since(start)))
 	})
 
 	e.RegisterCommand(sdk.CommandDef{
@@ -57,6 +51,18 @@ func Register(e *sdk.Extension) {
 		PromptHint: "Check token usage for the current session",
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
 			return sdk.TextResult(stats.FormatSummary()), nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "usage_status",
+		Description: "Show usage extension status: version and turn count.",
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			return sdk.TextResult(fmt.Sprintf("usage v%s\nTurns: %d", version, stats.TurnCount())), nil
 		},
 	})
 }

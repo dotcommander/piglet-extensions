@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("pipeline", "0.1.0")
-	pipeline.Register(e)
+	e := sdk.New("pipeline", "0.2.0")
+	pipeline.Register(e, "0.2.0")
 	e.Run()
 }

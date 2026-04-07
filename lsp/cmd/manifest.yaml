@@ -1,5 +1,5 @@
 name: lsp
-version: 0.1.0
+version: 0.2.0
 runtime: ./lsp
 description: Language server queries for go-to-definition, references, hover, rename, and symbols
 capabilities:

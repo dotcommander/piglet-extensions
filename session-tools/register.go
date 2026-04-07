@@ -15,7 +15,7 @@ var (
 
 // Register registers the session-tools extension's commands, tools, and prompt
 // section, and schedules OnInit work via OnInitAppend.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	e.OnInitAppend(func(x *sdk.Extension) {
 
 		cwd = x.CWD()
@@ -137,7 +137,7 @@ func Register(e *sdk.Extension) {
 					"description": "Keyword or phrase to search for in session content",
 				},
 			},
-			"required": []any{"session_path", "query"},
+			"required": []string{"session_path", "query"},
 		},
 		PromptHint: "Search a session file for specific content by keyword",
 		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
@@ -192,6 +192,16 @@ func Register(e *sdk.Extension) {
 			}
 
 			return sdk.TextResult("Handoff complete. Context transferred to new session."), nil
+		},
+	})
+
+	// Status tool
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "session_status",
+		Description: "Show session-tools extension status: version and working directory.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			return sdk.TextResult(fmt.Sprintf("session-tools %s\n  CWD: %s\n", version, cwd)), nil
 		},
 	})
 }

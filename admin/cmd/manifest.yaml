@@ -1,5 +1,5 @@
 name: admin
-version: 0.2.0
+version: 0.3.0
 description: Configuration viewer, health check, and admin tools
 runtime: ./admin
 intents:

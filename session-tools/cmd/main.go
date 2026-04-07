@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("session-tools", "0.2.0")
-	sessiontools.Register(e)
+	e := sdk.New("session-tools", "0.3.0")
+	sessiontools.Register(e, "0.3.0")
 	e.Run()
 }

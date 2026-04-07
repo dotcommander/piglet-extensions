@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("modelsdev", "0.1.0")
+	e := sdk.New("modelsdev", "0.2.0")
 	modelsdev.Register(e)
 	e.Run()
 }

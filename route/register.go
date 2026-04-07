@@ -25,7 +25,7 @@ type state struct {
 }
 
 // Register wires the route extension into a shared SDK extension.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	s := &state{}
 
 	e.OnInitAppend(func(x *sdk.Extension) {
@@ -157,6 +157,31 @@ func Register(e *sdk.Extension) {
 				action = "wrong"
 			}
 			return sdk.TextResult(fmt.Sprintf("Recorded %s feedback for %q on prompt %q. Run /route learn to apply.", action, component, truncatePrompt(prompt, 50))), nil
+		},
+	})
+
+	// Tool: route_status — extension status for diagnostics
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "route_status",
+		Description: "Show route extension status: version, registry state, and learned trigger counts.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			s.mu.RLock()
+			defer s.mu.RUnlock()
+
+			if !s.ready || s.reg == nil {
+				return sdk.TextResult(fmt.Sprintf("route v%s\n  State: registry not loaded", version)), nil
+			}
+			tc, atc := 0, 0
+			if s.learned != nil {
+				for _, v := range s.learned.Triggers {
+					tc += len(v)
+				}
+				for _, v := range s.learned.AntiTriggers {
+					atc += len(v)
+				}
+			}
+			return sdk.TextResult(fmt.Sprintf("route v%s\n  State: ready\n  Triggers: %d learned, %d anti-triggers\n  Components: %d", version, tc, atc, len(s.reg.Components))), nil
 		},
 	})
 
@@ -314,10 +339,11 @@ func mergeLearnedIntoRegistry(reg *Registry, lt *LearnedTriggers) {
 }
 
 func truncatePrompt(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }
 
 // FormatRouteResult formats a route result for human display.

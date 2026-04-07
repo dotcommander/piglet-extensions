@@ -15,7 +15,7 @@ import (
 var defaultPrompt string
 
 // Register registers the webfetch extension's tools and prompt section.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	cfg, err := LoadConfig()
 	if err != nil {
 		slog.Error("webfetch: failed to load config", "error", err)
@@ -134,6 +134,16 @@ func Register(e *sdk.Extension) {
 				return sdk.TextResult(FormatResults(results)), nil
 			}
 			return sdk.ErrorResult("url or query is required"), nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "webfetch_status",
+		Description: "Show webfetch extension status: version, session cache size, and provider counts.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			urls, queries := client.GetStorage().List()
+			return sdk.TextResult(fmt.Sprintf("webfetch v%s\n  Session cache: %d fetches, %d searches\n  Config: %s", version, len(urls), len(queries), cfg.Provider())), nil
 		},
 	})
 }

@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("lsp", "0.1.0")
-	lsp.Register(e)
+	e := sdk.New("lsp", "0.2.0")
+	lsp.Register(e, "0.2.0")
 	e.Run()
 }

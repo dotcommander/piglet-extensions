@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet/sdk"
@@ -23,14 +22,10 @@ const pipelinesDir = "pipelines"
 var configDir string
 
 // Register registers the pipeline extension's tools and commands.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	e.OnInit(func(ext *sdk.Extension) {
-		start := time.Now()
-		ext.Log("debug", "[pipeline] OnInit start")
-
 		home, err := xdg.ConfigDir()
 		if err != nil {
-			ext.Log("debug", fmt.Sprintf("[pipeline] OnInit complete — config dir error (%s)", time.Since(start)))
 			return
 		}
 		configDir = home
@@ -43,8 +38,6 @@ func Register(e *sdk.Extension) {
 				Order:   75,
 			})
 		}
-
-		ext.Log("debug", fmt.Sprintf("[pipeline] OnInit complete (%s)", time.Since(start)))
 	})
 
 	e.RegisterTool(sdk.ToolDef{
@@ -89,6 +82,26 @@ func Register(e *sdk.Extension) {
 		},
 		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
 			return listPipelines()
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "pipeline_status",
+		Description: "Show pipeline extension status: version, pipeline directory, and pipeline count.",
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			if configDir == "" {
+				return sdk.TextResult(fmt.Sprintf("pipeline v%s\nState: not initialized", version)), nil
+			}
+			dir := filepath.Join(configDir, pipelinesDir)
+			pipes, err := LoadDir(dir)
+			if err != nil {
+				return sdk.TextResult(fmt.Sprintf("pipeline v%s\nDir: %s\nError: %s", version, dir, err)), nil
+			}
+			return sdk.TextResult(fmt.Sprintf("pipeline v%s\nDir: %s\nPipelines: %d", version, dir, len(pipes))), nil
 		},
 	})
 

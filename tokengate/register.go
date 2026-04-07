@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
+	"strings"
 
 	sdk "github.com/dotcommander/piglet/sdk"
 )
@@ -12,14 +12,12 @@ import (
 var budget *BudgetState
 
 // Register registers the tokengate extension: scope limiter + budget tracker.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	cfg := LoadConfig()
 	budget = NewBudgetState(cfg)
 
 	// OnInit: register prompt section (needs config to be loaded)
 	e.OnInitAppend(func(x *sdk.Extension) {
-		start := time.Now()
-		x.Log("debug", "[tokengate] OnInit start")
 
 		if cfg.Enabled {
 			prompt := LoadPrompt()
@@ -30,7 +28,6 @@ func Register(e *sdk.Extension) {
 			})
 		}
 
-		x.Log("debug", fmt.Sprintf("[tokengate] OnInit complete (%s)", time.Since(start)))
 	})
 
 	// Scope interceptor: rewrites tool calls for token efficiency
@@ -88,4 +85,26 @@ func Register(e *sdk.Extension) {
 			return nil
 		},
 	})
+	// Status tool
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "tokengate_status",
+		Description: "Show tokengate extension status: version, context window, and interceptor state.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			var b strings.Builder
+			fmt.Fprintf(&b, "tokengate %s\n", version)
+			fmt.Fprintf(&b, "  Context window: %s tokens\n", fmtNum(cfg.ContextWindow))
+			fmt.Fprintf(&b, "  Warn at: %d%%\n", cfg.WarnPercent)
+			fmt.Fprintf(&b, "  Scope limiter: %s\n", boolStr(cfg.Enabled))
+			fmt.Fprintf(&b, "  Summarizer: %s (threshold: %d chars)\n", boolStr(cfg.SummarizeEnabled), cfg.SummarizeThreshold)
+			return sdk.TextResult(b.String()), nil
+		},
+	})
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "enabled"
+	}
+	return "disabled"
 }

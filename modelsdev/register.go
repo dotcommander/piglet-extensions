@@ -13,11 +13,7 @@ const refreshTimeout = 10 * time.Second
 // Register registers the modelsdev extension's OnInit handler and commands.
 func Register(e *sdk.Extension) {
 	e.OnInit(func(x *sdk.Extension) {
-		start := time.Now()
-		x.Log("debug", "[modelsdev] OnInit start")
-
 		if !CacheStale() {
-			x.Log("debug", fmt.Sprintf("[modelsdev] OnInit complete — cache fresh (%s)", time.Since(start)))
 			return
 		}
 		// Stale-while-revalidate: models.yaml has last-known-good data.
@@ -30,8 +26,6 @@ func Register(e *sdk.Extension) {
 				x.Log("warn", "modelsdev: "+err.Error())
 			}
 		}()
-
-		x.Log("debug", fmt.Sprintf("[modelsdev] OnInit complete — refresh running in background (%s)", time.Since(start)))
 	})
 
 	e.RegisterCommand(sdk.CommandDef{

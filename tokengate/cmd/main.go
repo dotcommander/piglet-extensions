@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("tokengate", "0.1.0")
-	tokengate.Register(e)
+	e := sdk.New("tokengate", "0.2.0")
+	tokengate.Register(e, "0.2.0")
 	e.Run()
 }

@@ -1,5 +1,5 @@
 name: webfetch
-version: 0.1.0
+version: 0.3.0
 runtime: ./webfetch
 description: Fetch URLs as clean markdown or search the web
 capabilities:

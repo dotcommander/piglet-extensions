@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("cron", "0.1.0")
-	cron.Register(e)
+	e := sdk.New("cron", "0.2.0")
+	cron.Register(e, "0.2.0")
 	e.Run()
 }

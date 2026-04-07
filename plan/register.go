@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	sdk "github.com/dotcommander/piglet/sdk"
 )
@@ -17,18 +16,14 @@ type planState struct {
 }
 
 // Register wires the plan extension into a shared SDK extension.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	s := &planState{}
 
 	e.OnInit(func(x *sdk.Extension) {
-		start := time.Now()
-		x.Log("debug", "[plan] OnInit start")
-
 		s.cwd = x.CWD()
 		store, err := NewStore(s.cwd)
 		if err != nil {
 			x.Notify(fmt.Sprintf("plan: init failed: %v", err))
-			x.Log("debug", fmt.Sprintf("[plan] OnInit complete — store init failed (%s)", time.Since(start)))
 			return
 		}
 		s.store = store
@@ -41,7 +36,6 @@ func Register(e *sdk.Extension) {
 			Order:   55,
 		})
 
-		x.Log("debug", fmt.Sprintf("[plan] OnInit complete (%s)", time.Since(start)))
 	})
 
 	e.RegisterTool(sdk.ToolDef{
@@ -100,6 +94,27 @@ func Register(e *sdk.Extension) {
 		PromptHint: "Switch plan mode: propose (block changes, record as steps) or execute (allow changes)",
 		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
 			return handlePlanMode(s, args)
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "plan_status",
+		Description: "Show plan extension status: version, active plan state, and mode.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			if s.store == nil {
+				return sdk.TextResult(fmt.Sprintf("plan v%s\n  State: not initialized", version)), nil
+			}
+			p, _ := s.store.Active()
+			if p == nil {
+				return sdk.TextResult(fmt.Sprintf("plan v%s\n  State: no active plan", version)), nil
+			}
+			mode := p.Mode
+			if mode == "" {
+				mode = ModeExecute
+			}
+			done, total := p.Progress()
+			return sdk.TextResult(fmt.Sprintf("plan v%s\n  State: active\n  Mode: %s\n  Steps: %d/%d done\n  Checkpoints: %v", version, mode, done, total, p.GitEnabled)), nil
 		},
 	})
 

@@ -1,5 +1,5 @@
 name: pipeline
-version: 0.1.0
+version: 0.2.0
 runtime: ./pipeline
 description: Run multi-step YAML workflows with params, loops, retries, and conditionals
 capabilities:

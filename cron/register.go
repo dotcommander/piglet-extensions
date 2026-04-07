@@ -19,9 +19,9 @@ import (
 )
 
 // Register registers the cron extension's commands, tools, and event handlers.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	registerCommands(e)
-	registerTools(e)
+	registerTools(e, version)
 	registerEventHandler(e)
 }
 
@@ -294,7 +294,7 @@ func handleCronUninstall(e *sdk.Extension) error {
 	return nil
 }
 
-func registerTools(e *sdk.Extension) {
+func registerTools(e *sdk.Extension, version string) {
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "cron_list",
 		Description: "List all scheduled cron tasks with their schedules, last run, and next run times",
@@ -489,7 +489,8 @@ func registerTools(e *sdk.Extension) {
 				DailyAt: argStr(args, "daily_at"),
 				Weekly:  argStr(args, "weekly"),
 			}
-			if _, err := ParseSchedule(spec); err != nil {
+			sched, err := ParseSchedule(spec)
+			if err != nil {
 				return sdk.ErrorResult("Invalid schedule: " + err.Error()), nil
 			}
 			task.Schedule = spec
@@ -503,7 +504,32 @@ func registerTools(e *sdk.Extension) {
 			if err := SaveConfig(cfg); err != nil {
 				return sdk.ErrorResult("Error saving: " + err.Error()), nil
 			}
-			return sdk.TextResult(fmt.Sprintf("Task %q added (%s, %s).", name, action, spec)), nil
+			schedStr := "unknown"
+			if sched != nil {
+				schedStr = sched.String()
+			}
+			return sdk.TextResult(fmt.Sprintf("Task %q added (%s, %s).", name, action, schedStr)), nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "cron_status",
+		Description: "Show cron extension status: version, config path, and task counts.",
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			cfg := LoadConfig()
+			total := len(cfg.Tasks)
+			enabled := 0
+			for _, t := range cfg.Tasks {
+				if t.IsEnabled() {
+					enabled++
+				}
+			}
+			dir, _ := xdg.ExtensionDir("cron")
+			return sdk.TextResult(fmt.Sprintf("cron v%s\nConfig: %s\nTasks: %d total, %d enabled", version, filepath.Join(dir, "schedules.yaml"), total, enabled)), nil
 		},
 	})
 }

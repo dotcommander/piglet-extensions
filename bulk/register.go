@@ -18,7 +18,7 @@ import (
 var defaultPrompt string
 
 // Register registers the bulk extension's tool and prompt section.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Bulk Operations",
 		Content: xdg.LoadOrCreateExt("bulk", "prompt.md", strings.TrimSpace(defaultPrompt)),
@@ -78,6 +78,18 @@ func Register(e *sdk.Extension) {
 			"required": []string{"command", "source"},
 		},
 		Execute: executeBulk,
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "bulk_status",
+		Description: "Show bulk extension status: version.",
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			return sdk.TextResult(fmt.Sprintf("bulk v%s", version)), nil
+		},
 	})
 }
 

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -77,9 +78,8 @@ func defaultConfigEntries(dir string) []configFile {
 
 // formatFileStatus returns a human-readable status line for a config file.
 func formatFileStatus(cf configFile) string {
-	info, err := os.Stat(cf.path)
+	_, err := os.Stat(cf.path)
 	if err == nil {
-		_ = info
 		return cf.path
 	}
 	if os.IsNotExist(err) {
@@ -155,6 +155,20 @@ func Register(e *sdk.Extension, version string) {
 		Name:        "config",
 		Description: "Inspect and manage piglet configuration",
 		Handler:     configCommand(version, e),
+	})
+
+	// Status tool
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "admin_status",
+		Description: "Show admin extension status: version and config directory path.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			dir, err := xdg.ConfigDir()
+			if err != nil {
+				return sdk.ErrorResult("cannot determine config dir: " + err.Error()), nil
+			}
+			return sdk.TextResult(fmt.Sprintf("admin %s\n  Config dir: %s\n", version, dir)), nil
+		},
 	})
 
 	// Aliases

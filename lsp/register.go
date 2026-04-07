@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
@@ -16,7 +15,7 @@ import (
 var defaultPrompt string
 
 // Register wires the lsp extension into a shared SDK extension.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	var mgr *Manager
 
 	positionParams := map[string]any{
@@ -43,9 +42,6 @@ func Register(e *sdk.Extension) {
 	}
 
 	e.OnInit(func(x *sdk.Extension) {
-		start := time.Now()
-		x.Log("debug", "[lsp] OnInit start")
-
 		mgr = NewManager(x.CWD())
 
 		x.RegisterPromptSection(sdk.PromptSectionDef{
@@ -53,8 +49,6 @@ func Register(e *sdk.Extension) {
 			Content: xdg.LoadOrCreateExt("lsp", "prompt.md", strings.TrimSpace(defaultPrompt)),
 			Order:   40,
 		})
-
-		x.Log("debug", fmt.Sprintf("[lsp] OnInit complete (%s)", time.Since(start)))
 	})
 
 	e.RegisterTool(sdk.ToolDef{
@@ -161,6 +155,21 @@ func Register(e *sdk.Extension) {
 				return sdk.ErrorResult(fmt.Sprintf("symbols: %v", err)), nil
 			}
 			return sdk.TextResult(FormatSymbols(symbols, mgr.CWD())), nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "lsp_status",
+		Description: "Show LSP extension status: version, CWD, and language server state.",
+		Parameters: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			if mgr == nil {
+				return sdk.TextResult(fmt.Sprintf("lsp v%s\nState: not initialized", version)), nil
+			}
+			return sdk.TextResult(fmt.Sprintf("lsp v%s\nCWD: %s", version, mgr.CWD())), nil
 		},
 	})
 }

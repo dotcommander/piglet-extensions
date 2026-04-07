@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -176,6 +177,28 @@ func (c *Config) applyDefaults() {
 	if c.DuckDuckGo.SearchURL == "" {
 		c.DuckDuckGo = DefaultDuckDuckGoConfig()
 	}
+}
+
+// Provider returns a summary of configured providers.
+func (c *Config) Provider() string {
+	var providers []string
+	if c.JinaAPIKey != "" || os.Getenv("JINA_API_KEY") != "" {
+		providers = append(providers, "jina")
+	}
+	if c.BraveAPIKey != "" || os.Getenv("BRAVE_API_KEY") != "" {
+		providers = append(providers, "brave")
+	}
+	if c.ExaAPIKey != "" || os.Getenv("EXA_API_KEY") != "" {
+		providers = append(providers, "exa")
+	}
+	if c.GeminiAPIKey != "" || os.Getenv("GEMINI_API_KEY") != "" {
+		providers = append(providers, "gemini")
+	}
+	if c.PerplexityAPIKey != "" || os.Getenv("PERPLEXITY_API_KEY") != "" {
+		providers = append(providers, "perplexity")
+	}
+	providers = append(providers, "colly", "rod", "duckduckgo")
+	return strings.Join(providers, ", ")
 }
 
 func createDefaultConfig(path string) (*Config, error) {
