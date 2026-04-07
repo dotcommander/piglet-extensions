@@ -1,6 +1,6 @@
 # Test plan
 
-- [ ] Step one
+- [x] Step one (26af849)
 - [ ] Step two
 - [ ] Step three
 
