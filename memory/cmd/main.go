@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("memory", "0.1.0")
-	memory.Register(e)
+	e := sdk.New("memory", "0.2.0")
+	memory.Register(e, "0.2.0")
 	e.Run()
 }

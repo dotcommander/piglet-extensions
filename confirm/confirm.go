@@ -9,6 +9,26 @@ import (
 	"time"
 )
 
+// cmdEnv returns os.Environ() with GOWORK=off prepended.
+// This prevents Go workspace (go.work) from interfering with module operations.
+func cmdEnv() []string {
+	return append([]string{"GOWORK=off"}, os.Environ()...)
+}
+
+// modulePrefix reads the module path from go list -m.
+func modulePrefix(root string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "list", "-m")
+	cmd.Dir = root
+	cmd.Env = cmdEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 type Options struct {
 	Root   string
 	Files  []string
@@ -64,7 +84,7 @@ func Run(opts Options) (*Result, error) {
 		checks = append(checks, RunTests(packages, root))
 	}
 	if !opts.NoLint {
-		checks = append(checks, Lint(files, root))
+		checks = append(checks, Lint(packages, root))
 	}
 
 	pass := true

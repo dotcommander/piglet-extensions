@@ -1,5 +1,5 @@
 name: repomap
-version: 0.1.0
+version: 0.2.0
 runtime: ./repomap
 description: Token-budgeted repository structure map with symbol extraction
 capabilities:

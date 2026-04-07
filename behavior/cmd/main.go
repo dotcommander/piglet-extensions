@@ -1,5 +1,6 @@
-// Behavior extension. Loads behavioral guidelines from ~/.config/piglet/behavior.md
-// and injects them as the earliest system prompt section.
+// Behavior extension. Loads behavioral guidelines from
+// ~/.config/piglet/extensions/behavior/behavior.md and injects them
+// as the earliest system prompt section.
 package main
 
 import (
@@ -8,7 +9,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("behavior", "0.1.0")
-	behavior.Register(e)
+	e := sdk.New("behavior", "0.2.0")
+	behavior.Register(e, "0.2.0")
 	e.Run()
 }

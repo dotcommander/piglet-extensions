@@ -49,7 +49,6 @@ func Register(e *sdk.Extension) {
 				defer cancel()
 				path, err := distillSession(ctx, e, messages)
 				if err != nil {
-					e.Log("debug", fmt.Sprintf("[distill] auto-distill skipped: %v", err))
 					return
 				}
 				e.Log("info", fmt.Sprintf("[distill] skill written: %s", path))

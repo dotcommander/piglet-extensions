@@ -192,3 +192,47 @@ func (rt *memoryRuntime) toolRelated() sdk.ToolDef {
 		},
 	}
 }
+
+func (rt *memoryRuntime) toolDelete() sdk.ToolDef {
+	return sdk.ToolDef{
+		Name:        "memory_delete",
+		Description: "Delete a fact from project memory by key.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"key": map[string]any{"type": "string", "description": "Memory key to delete"},
+			},
+			"required": []string{"key"},
+		},
+		PromptHint: "Delete a fact from project memory",
+		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			s, errResult := rt.requireStore()
+			if errResult != nil {
+				return errResult, nil
+			}
+			key, _ := args["key"].(string)
+			if key == "" {
+				return sdk.ErrorResult("key is required"), nil
+			}
+			if err := s.Delete(key); err != nil {
+				return sdk.ErrorResult(err.Error()), nil
+			}
+			return sdk.TextResult("Deleted: " + key), nil
+		},
+	}
+}
+
+func (rt *memoryRuntime) toolStatus(version string) sdk.ToolDef {
+	return sdk.ToolDef{
+		Name:        "memory_status",
+		Description: "Show memory extension status: version, store path, and fact counts.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			if rt == nil || rt.store == nil {
+				return sdk.TextResult(fmt.Sprintf("memory v%s\nStore not available.", version)), nil
+			}
+			facts := rt.store.List("")
+			return sdk.TextResult(fmt.Sprintf("memory v%s\nStore: %s\nFacts: %d stored", version, rt.store.Path(), len(facts))), nil
+		},
+	}
+}

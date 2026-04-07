@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	sdk "github.com/dotcommander/piglet/sdk"
 )
@@ -18,8 +17,6 @@ var (
 // section, and schedules OnInit work via OnInitAppend.
 func Register(e *sdk.Extension) {
 	e.OnInitAppend(func(x *sdk.Extension) {
-		start := time.Now()
-		x.Log("debug", "[session-tools] OnInit start")
 
 		cwd = x.CWD()
 		cfg = LoadConfig()
@@ -33,7 +30,6 @@ func Register(e *sdk.Extension) {
 			})
 		}
 
-		x.Log("debug", fmt.Sprintf("[session-tools] OnInit complete (%s)", time.Since(start)))
 	})
 
 	e.RegisterCommand(sdk.CommandDef{

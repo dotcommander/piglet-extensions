@@ -44,10 +44,7 @@ func registerClearer(x *sdk.Extension) {
 		Priority: 60, // after memory-extractor (50)
 		Events:   []string{"EventTurnEnd"},
 		Handle: func(ctx context.Context, _ string, _ json.RawMessage) *sdk.Action {
-			cleared := clearOldToolResults(ctx, x, cfg.Turns)
-			if cleared > 0 {
-				x.Log("debug", fmt.Sprintf("[memory-clearer] cleared %d tool result(s)", cleared))
-			}
+			clearOldToolResults(ctx, x, cfg.Turns)
 			return nil
 		},
 	})
@@ -119,7 +116,6 @@ func clearOldToolResults(ctx context.Context, x *sdk.Extension, turnThreshold in
 	}
 
 	if err := x.SetConversationMessages(ctx, updated); err != nil {
-		x.Log("debug", fmt.Sprintf("[memory-clearer] set messages failed: %v", err))
 		return 0
 	}
 

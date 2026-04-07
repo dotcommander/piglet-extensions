@@ -16,11 +16,24 @@ var (
 	cwd string
 )
 
+const changelogUsage = `Usage: /changelog [ref] [--write] [--dry-run] [--config]
+
+Generates a changelog from git history using conventional commit parsing.
+
+Arguments:
+  ref            Git revision range (default: last tag..HEAD)
+                 Examples: v0.1.0..v0.2.0, v0.5.0, HEAD~10..HEAD
+
+Flags:
+  --write        Write to CHANGELOG.md (prepends to existing)
+  --dry-run      Preview markdown output without writing
+  --config       Show current type mappings and config`
+
 func Register(e *sdk.Extension) {
 	e.OnInitAppend(func(x *sdk.Extension) {
 		cwd = x.CWD()
 		cfg = loadConfig()
-		x.Log("debug", "[changelog] OnInit complete")
+
 	})
 
 	e.RegisterCommand(sdk.CommandDef{
@@ -42,6 +55,9 @@ func Register(e *sdk.Extension) {
 					dryRun = true
 				case "--config":
 					showConfig = true
+				case "--help", "-h":
+					e.ShowMessage(changelogUsage)
+					return nil
 				default:
 					if !strings.HasPrefix(part, "--") {
 						ref = part
@@ -65,7 +81,7 @@ func Register(e *sdk.Extension) {
 
 			commits, err := ParseCommits(cwd, ref)
 			if err != nil {
-				e.ShowMessage(fmt.Sprintf("Error: %v", err))
+				e.ShowMessage(fmt.Sprintf("Error: %v\n\nUse /changelog --help for usage.", err))
 				return nil
 			}
 			if len(commits) == 0 {

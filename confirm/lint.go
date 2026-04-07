@@ -3,11 +3,12 @@ package confirm
 import (
 	"context"
 	"os/exec"
+	"strings"
 	"time"
 )
 
-func Lint(files []string, root string) CheckResult {
-	if len(files) == 0 {
+func Lint(packages []string, root string) CheckResult {
+	if len(packages) == 0 {
 		return CheckResult{Name: "lint", Pass: true}
 	}
 
@@ -15,11 +16,23 @@ func Lint(files []string, root string) CheckResult {
 		return CheckResult{Name: "lint", Pass: true, Output: "skipped: golangci-lint not found"}
 	}
 
+	// Convert import paths to relative paths using module prefix
+	prefix := modulePrefix(root)
+	relPaths := make([]string, len(packages))
+	for i, pkg := range packages {
+		if prefix != "" {
+			pkg = strings.TrimPrefix(pkg, prefix+"/")
+		}
+		relPaths[i] = "./" + pkg
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "golangci-lint", "run", "--new-from-rev=HEAD~1", "--timeout=60s")
+	args := append([]string{"golangci-lint", "run", "--timeout=60s"}, relPaths...)
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = root
+	cmd.Env = cmdEnv()
 
 	start := time.Now()
 	out, err := cmd.CombinedOutput()

@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("clipboard", "0.1.0")
+	e := sdk.New("clipboard", "0.2.0")
 	clipboard.Register(e)
 	e.Run()
 }

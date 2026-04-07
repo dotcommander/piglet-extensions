@@ -76,17 +76,25 @@ func walkDirs(dir string, current, max int, match func(string) bool, results *[]
 }
 
 // ListScanner wraps an explicit list of paths into Items.
+// If Root is set, relative paths are resolved against Root instead of CWD.
 type ListScanner struct {
 	Paths []string
+	Root  string // optional base directory for relative paths
 }
 
 // Scan implements Scanner for ListScanner.
 func (s *ListScanner) Scan(_ context.Context) ([]Item, error) {
 	items := make([]Item, len(s.Paths))
 	for i, p := range s.Paths {
-		abs, err := filepath.Abs(p)
-		if err != nil {
-			abs = p
+		var abs string
+		if s.Root != "" && !filepath.IsAbs(p) {
+			abs = filepath.Join(s.Root, p)
+		} else {
+			var err error
+			abs, err = filepath.Abs(p)
+			if err != nil {
+				abs = p
+			}
 		}
 		items[i] = Item{Name: filepath.Base(abs), Path: abs}
 	}

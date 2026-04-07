@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("background", "0.1.0")
-	background.Register(e)
+	e := sdk.New("background", "0.2.0")
+	background.Register(e, "0.2.0")
 	e.Run()
 }

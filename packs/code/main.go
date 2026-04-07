@@ -14,7 +14,7 @@ import (
 func main() {
 	e := sdk.New("pack-code", "0.1.0")
 	safety.Register(e, "lsp", lsp.Register)
-	safety.Register(e, "repomap", repomap.Register)
+	safety.RegisterWithVersion(e, "repomap", "0.2.0", repomap.Register)
 	safety.Register(e, "sift", sift.Register)
 	safety.Register(e, "plan", plan.Register)
 	safety.Register(e, "suggest", suggest.Register)

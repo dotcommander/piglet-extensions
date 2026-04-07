@@ -18,6 +18,6 @@ func main() {
 	safety.Register(e, "extensions-list", extlist.Register)
 	safety.Register(e, "undo", undo.Register)
 	safety.Register(e, "scaffold", scaffold.Register)
-	safety.Register(e, "background", background.Register)
+	safety.RegisterWithVersion(e, "background", "0.2.0", background.Register)
 	e.Run()
 }

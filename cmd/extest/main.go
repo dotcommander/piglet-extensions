@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"time"
 )
@@ -43,6 +44,17 @@ func clr(s, color string) string {
 		return s
 	}
 	return color + s + cReset
+}
+
+func init() {
+	// Clean up child processes on Ctrl+C.
+	go func() {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt)
+		<-ch
+		fmt.Fprintf(os.Stderr, "\n→ interrupted\n")
+		os.Exit(130)
+	}()
 }
 
 // ── RPC types ──────────────────────────────────────────────────────────
@@ -198,8 +210,9 @@ func runInit(cwd string) {
 	msgs := []jsonRPC{
 		{Version: "2.0", ID: intPtr(1), Method: "initialize", Params: map[string]any{"cwd": cwd}},
 	}
-	out := session(extBinary, msgs)
-	display(out)
+	r := session(extBinary, msgs)
+	display(r.lines)
+	exitFromResult(r)
 }
 
 func runTool(cwd, tool, argsJSON string) {
@@ -214,8 +227,9 @@ func runTool(cwd, tool, argsJSON string) {
 		{Version: "2.0", ID: intPtr(1), Method: "initialize", Params: map[string]any{"cwd": cwd}},
 		{Version: "2.0", ID: intPtr(2), Method: "tool/execute", Params: map[string]any{"name": tool, "args": params}},
 	}
-	out := session(extBinary, msgs)
-	display(out)
+	r := session(extBinary, msgs)
+	display(r.lines)
+	exitFromResult(r)
 }
 
 func runCommand(cwd, name, cmdArgs string) {
@@ -224,8 +238,9 @@ func runCommand(cwd, name, cmdArgs string) {
 		{Version: "2.0", ID: intPtr(1), Method: "initialize", Params: map[string]any{"cwd": cwd}},
 		{Version: "2.0", ID: intPtr(2), Method: "command/execute", Params: map[string]any{"name": name, "args": cmdArgs}},
 	}
-	out := session(extBinary, msgs)
-	display(out)
+	r := session(extBinary, msgs)
+	display(r.lines)
+	exitFromResult(r)
 }
 
 func runEvent(cwd, eventType, dataJSON string) {
@@ -239,8 +254,19 @@ func runEvent(cwd, eventType, dataJSON string) {
 		{Version: "2.0", ID: intPtr(1), Method: "initialize", Params: map[string]any{"cwd": cwd}},
 		{Version: "2.0", ID: intPtr(2), Method: "event/dispatch", Params: map[string]any{"type": eventType, "data": data}},
 	}
-	out := session(extBinary, msgs)
-	display(out)
+	r := session(extBinary, msgs)
+	display(r.lines)
+	exitFromResult(r)
+}
+
+// exitFromResult exits with appropriate code: 2=extension error, 3=timeout.
+func exitFromResult(r *sessionResult) {
+	if r.timedOut {
+		os.Exit(3)
+	}
+	if r.hasErrors() {
+		os.Exit(2)
+	}
 }
 
 func runInteractive(cwd string) {
@@ -248,10 +274,10 @@ func runInteractive(cwd string) {
 	msgs := []jsonRPC{
 		{Version: "2.0", ID: intPtr(1), Method: "initialize", Params: map[string]any{"cwd": cwd}},
 	}
-	out := session(extBinary, msgs)
+	r := session(extBinary, msgs)
 
-	regs := extractRegistrations(out)
-	extName, extVer := extractInitInfo(out)
+	regs := extractRegistrations(r.lines)
+	extName, extVer := extractInitInfo(r.lines)
 	fmt.Printf("\n  %s v%s\n", clr(extName, cBold), extVer)
 	printRegistrationSummary(regs)
 	fmt.Println()
@@ -288,6 +314,10 @@ func runInteractive(cwd string) {
 			printEventsList(regs)
 			continue
 		}
+		if line == "commands" || line == "cmds" {
+			printCommandsList(regs)
+			continue
+		}
 
 		var rpcMsgs []jsonRPC
 		if strings.HasPrefix(line, "tool ") {
@@ -317,13 +347,13 @@ func runInteractive(cwd string) {
 					Params: map[string]any{"type": evtType, "data": data}},
 			}
 		} else {
-			fmt.Println("Usage: tool <name> <json> | cmd <name> [args] | event <type> <json> | tools | events | help | quit")
+			fmt.Println("Usage: tool <name> <json> | cmd <name> [args] | event <type> <json> | tools | commands | events | help | quit")
 			continue
 		}
 		nextID++
 
-		out := session(extBinary, rpcMsgs)
-		display(out)
+		r := session(extBinary, rpcMsgs)
+		display(r.lines)
 	}
 }
 
@@ -333,6 +363,7 @@ func printInteractiveHelp(regs []registration) {
 	fmt.Println("    cmd <name> [args]   Execute a command")
 	fmt.Println("    event <type> <json> Dispatch an event")
 	fmt.Println("    tools               List available tools")
+	fmt.Println("    commands            List available slash commands")
 	fmt.Println("    events              List event handlers")
 	fmt.Println("    registrations       Show all registered capabilities")
 	fmt.Println("    help                Show this help")
@@ -377,6 +408,22 @@ func printEventsList(regs []registration) {
 	}
 }
 
+func printCommandsList(regs []registration) {
+	var cmds []registration
+	for _, r := range regs {
+		if r.kind == "command" {
+			cmds = append(cmds, r)
+		}
+	}
+	if len(cmds) == 0 {
+		fmt.Println("  No commands registered")
+		return
+	}
+	for _, c := range cmds {
+		fmt.Printf("  /%s — %s\n", clr(c.name, cCyan), c.description)
+	}
+}
+
 // ── Host RPC handling ──────────────────────────────────────────────────
 
 // respondHostRPC writes a mock response for extension→host requests.
@@ -401,6 +448,29 @@ func respondHostRPC(w *os.File, l *rpcLine) {
 		model, _ := params["model"].(string)
 		maxTokens, _ := params["maxTokens"].(float64)
 		logf("← mock host/chat (model: %s, maxTokens: %.0f) → %q", model, maxTokens, mockChat)
+	case "host/runBackground":
+		response = map[string]any{
+			"jsonrpc": "2.0",
+			"id":      id,
+			"result":  map[string]any{},
+		}
+		params, _ := l.parsed["params"].(map[string]any)
+		prompt, _ := params["prompt"].(string)
+		logf("← mock host/runBackground (prompt: %q)", truncate(prompt, 50))
+	case "host/isBackgroundRunning":
+		response = map[string]any{
+			"jsonrpc": "2.0",
+			"id":      id,
+			"result":  map[string]any{"running": false},
+		}
+		logf("← mock host/isBackgroundRunning → false")
+	case "host/cancelBackground":
+		response = map[string]any{
+			"jsonrpc": "2.0",
+			"id":      id,
+			"result":  map[string]any{},
+		}
+		logf("← mock host/cancelBackground")
 	default:
 		response = map[string]any{
 			"jsonrpc": "2.0",
@@ -697,12 +767,28 @@ func parseCmdArgs(s string) (string, string) {
 
 // ── Session management ─────────────────────────────────────────────────
 
+// sessionResult holds the output from running an extension session.
+type sessionResult struct {
+	lines    []*rpcLine
+	timedOut bool
+}
+
+// hasErrors returns true if any response lines indicate an error.
+func (r *sessionResult) hasErrors() bool {
+	for _, l := range r.lines {
+		if l.isError {
+			return true
+		}
+	}
+	return false
+}
+
 // session runs an extension binary, sends messages, and collects output.
 //
 // It spawns the binary, streams stdout through a channel, writes all messages,
 // waits for responses with matching IDs, then closes stdin to let the process
 // exit cleanly. Host RPC requests from the extension are automatically mocked.
-func session(binary string, msgs []jsonRPC) []*rpcLine {
+func session(binary string, msgs []jsonRPC) *sessionResult {
 	stdinR, stdinW, _ := os.Pipe()
 	stdoutR, stdoutW, _ := os.Pipe()
 
@@ -742,22 +828,67 @@ func session(binary string, msgs []jsonRPC) []*rpcLine {
 	start := time.Now()
 	logf("→ started %s", binary)
 
-	// Write messages with delay after initialize.
-	for i, m := range msgs {
-		line, _ := json.Marshal(m)
-		stdinW.Write(line)
-		stdinW.Write([]byte("\n"))
-		logf("→ sent %s", m.Method)
-		if m.Method == "initialize" && i < len(msgs)-1 {
-			logf("→ waiting 500ms for init...")
-			time.Sleep(500 * time.Millisecond)
+	// Pre-declare result so we can collect during init wait.
+	result := &sessionResult{}
+	deadline := time.After(time.Duration(timeout) * time.Second)
+	collectLine := func(l *rpcLine) {
+		result.lines = append(result.lines, l)
+		if l.isHostRPC {
+			respondHostRPC(stdinW, l)
+		}
+		// Only count responses (no method) against want map.
+		if id, ok := l.parsed["id"].(float64); ok {
+			if _, hasMethod := l.parsed["method"]; !hasMethod {
+				delete(want, id)
+			}
 		}
 	}
 
-	// Collect lines until all expected responses arrive or timeout.
-	// Also respond to host RPC requests from the extension.
-	var lines []*rpcLine
-	deadline := time.After(time.Duration(timeout) * time.Second)
+	// Phase 1: Send initialize and wait for its response.
+	if len(msgs) > 0 && msgs[0].Method == "initialize" {
+		line, _ := json.Marshal(msgs[0])
+		stdinW.Write(line)
+		stdinW.Write([]byte("\n"))
+		logf("â sent %s", msgs[0].Method)
+
+		logf("â waiting for init response...")
+		initDeadline := time.After(time.Duration(timeout) * time.Second)
+		for {
+			select {
+			case raw, ok := <-lineCh:
+				if !ok {
+					logf("â stdout closed during init")
+					result.timedOut = true
+					goto finish
+				}
+				l := parseLine(raw)
+				if l == nil {
+					continue
+				}
+				collectLine(l)
+				if l.isInit {
+					logf("â init received (%dms)", time.Since(start).Milliseconds())
+					goto initDone
+				}
+			case <-initDeadline:
+				logf("â init timeout (%ds)", timeout)
+				result.timedOut = true
+				goto finish
+			}
+		}
+	}
+
+initDone:
+	// Phase 2: Send remaining messages (tool/execute, command/execute, etc.)
+	for _, m := range msgs[1:] {
+		line, _ := json.Marshal(m)
+		stdinW.Write(line)
+		stdinW.Write([]byte("\n"))
+		logf("â sent %s", m.Method)
+	}
+
+	// Remove init ID from want since we already collected it.
+	delete(want, 1)
 
 	for len(want) > 0 {
 		select {
@@ -770,23 +901,10 @@ func session(binary string, msgs []jsonRPC) []*rpcLine {
 			if l == nil {
 				continue
 			}
-			lines = append(lines, l)
-
-			// Respond to host RPC requests from the extension.
-			if l.isHostRPC {
-				respondHostRPC(stdinW, l)
-			}
-
-			// Only count responses (no method field) against want map.
-			// Extension requests (host/chat, etc.) have method + id,
-			// responses have result/error + id.
-			if id, ok := l.parsed["id"].(float64); ok {
-				if _, hasMethod := l.parsed["method"]; !hasMethod {
-					delete(want, id)
-				}
-			}
+			collectLine(l)
 		case <-deadline:
 			logf("→ timeout (%ds)", timeout)
+			result.timedOut = true
 			goto finish
 		}
 	}
@@ -806,7 +924,7 @@ finish:
 				goto waitExit
 			}
 			if l := parseLine(raw); l != nil {
-				lines = append(lines, l)
+				result.lines = append(result.lines, l)
 			}
 		case <-drainDeadline:
 			goto waitExit
@@ -818,13 +936,13 @@ waitExit:
 	go func() { done <- cmd.Wait() }()
 	select {
 	case <-done:
-		logf("→ done (%dms, %d lines)", time.Since(start).Milliseconds(), len(lines))
+		logf("→ done (%dms, %d lines)", time.Since(start).Milliseconds(), len(result.lines))
 	case <-time.After(3 * time.Second):
 		cmd.Process.Kill()
 		logf("→ killed (hung after 3s)")
 	}
 
-	return lines
+	return result
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -842,4 +960,11 @@ func filepathAbs(p string) (string, error) {
 
 func logf(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", a...)
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

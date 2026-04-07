@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("repomap", "0.1.0")
-	repomap.Register(e)
+	e := sdk.New("repomap", "0.2.0")
+	repomap.Register(e, "0.2.0")
 	e.Run()
 }

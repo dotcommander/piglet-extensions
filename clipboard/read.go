@@ -16,13 +16,11 @@ type ImageData struct {
 // ReadImage reads an image from the macOS clipboard.
 // Returns the image as base64-encoded ImageData, or an error if no image is available.
 func ReadImage() (*ImageData, error) {
-	cmd := exec.Command("osascript", "-e", "the clipboard info")
-	info, err := cmd.Output()
+	infoStr, err := clipboardInfo()
 	if err != nil {
-		return nil, fmt.Errorf("clipboard not available")
+		return nil, err
 	}
 
-	infoStr := string(info)
 	var mime string
 	switch {
 	case strings.Contains(infoStr, "PNGf"):
@@ -33,9 +31,9 @@ func ReadImage() (*ImageData, error) {
 		return nil, fmt.Errorf("no image in clipboard")
 	}
 
-	clipClass := "«class PNGf»"
+	clipClass := "\u00ABclass PNGf\u00BB"
 	if mime == "image/jpeg" {
-		clipClass = "«class JPEG»"
+		clipClass = "\u00ABclass JPEG\u00BB"
 	}
 
 	script := fmt.Sprintf(
@@ -54,4 +52,23 @@ func ReadImage() (*ImageData, error) {
 		Data:     encoded,
 		MimeType: mime,
 	}, nil
+}
+
+// ReadText reads text from the macOS clipboard.
+func ReadText() (string, error) {
+	cmd := exec.Command("pbpaste")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("clipboard not available (requires macOS with pbpaste)")
+	}
+	return string(out), nil
+}
+
+func clipboardInfo() (string, error) {
+	cmd := exec.Command("osascript", "-e", "the clipboard info")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("clipboard not available (requires macOS with GUI session)")
+	}
+	return string(out), nil
 }

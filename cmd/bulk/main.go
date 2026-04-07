@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -17,7 +18,17 @@ import (
 	"github.com/dotcommander/piglet-extensions/bulk"
 )
 
+const version = "0.1.0"
+
 func main() {
+	// Handle --version before flag parsing.
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-version" {
+			fmt.Println("bulk", version)
+			os.Exit(0)
+		}
+	}
+
 	fs := flag.NewFlagSet("bulk", flag.ExitOnError)
 	fs.Usage = usage
 
@@ -53,7 +64,17 @@ func main() {
 		fatalf("resolve root: %v", err)
 	}
 
-	scanner, sourceLabel, err := buildScanner(*useGit, *useDirs, *useFiles, *listArg, absRoot, *pattern, *depth)
+	// Expand -list - to read paths from stdin.
+	effectiveList := *listArg
+	if *listArg == "-" {
+		paths, err := readStdinPaths()
+		if err != nil {
+			fatalf("reading stdin: %v", err)
+		}
+		effectiveList = strings.Join(paths, ",")
+	}
+
+	scanner, sourceLabel, err := buildScanner(*useGit, *useDirs, *useFiles, effectiveList, absRoot, *pattern, *depth)
 	if err != nil {
 		fatalf("%v", err)
 	}
@@ -87,10 +108,17 @@ func main() {
 		if err := enc.Encode(summary); err != nil {
 			fatalf("encode: %v", err)
 		}
+		if summary.FailedCount > 0 {
+			os.Exit(1)
+		}
 		return
 	}
 
 	printHuman(summary, *filterArg != "")
+
+	if summary.FailedCount > 0 {
+		os.Exit(1)
+	}
 }
 
 func buildScanner(useGit, useDirs, useFiles bool, listArg, root, pattern string, depth int) (bulk.Scanner, string, error) {
@@ -104,7 +132,7 @@ func buildScanner(useGit, useDirs, useFiles bool, listArg, root, pattern string,
 		return &bulk.GlobScanner{Pattern: pattern, Root: root}, "files", nil
 	case listArg != "":
 		paths := strings.Split(listArg, ",")
-		return &bulk.ListScanner{Paths: paths}, "list", nil
+		return &bulk.ListScanner{Paths: paths, Root: root}, "list", nil
 	default:
 		return nil, "", fmt.Errorf("specify a source: -git, -dirs, -files, or -list")
 	}
@@ -164,6 +192,19 @@ func fatalf(format string, args ...any) {
 	os.Exit(1)
 }
 
+// readStdinPaths reads one path per line from stdin.
+func readStdinPaths() ([]string, error) {
+	var paths []string
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" && !strings.HasPrefix(line, "#") {
+			paths = append(paths, line)
+		}
+	}
+	return paths, scanner.Err()
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `Usage: bulk [flags] <command>
 
@@ -171,7 +212,7 @@ Sources (pick one):
   -git              Scan for git repos
   -dirs             Scan for directories
   -files            Scan for files by glob
-  -list item1,item2 Explicit list of paths
+  -list item1,item2 Explicit list of paths (use - to read from stdin)
 
 Options:
   -root string      Root directory (default: .)
@@ -182,6 +223,7 @@ Options:
   -timeout int      Per-item timeout in seconds (default: 30)
   -dry-run          Collect and filter without executing
   -json             Output as JSON
+  -version          Print version
 
 Template vars in command: {path}, {name}, {dir}, {basename}
 
@@ -190,5 +232,6 @@ Examples:
   bulk -git -filter dirty git add -A && git commit -m "wip"
   bulk -dirs -pattern go.mod go build ./...
   bulk -files -pattern "*.go" -root ./internal gofmt -w {path}
+  find . -name "*.go" -type f | bulk -list - -root . wc -l {path}
 `)
 }

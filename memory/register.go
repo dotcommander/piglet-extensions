@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
@@ -16,16 +15,12 @@ import (
 var defaultCompactSystem string
 
 // Register registers the memory extension's tools, commands, and event handlers.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	var rt memoryRuntime
 
 	e.OnInitAppend(func(x *sdk.Extension) {
-		start := time.Now()
-		x.Log("debug", "[memory] OnInit start")
-
 		s, err := NewStore(x.CWD())
 		if err != nil {
-			x.Log("debug", fmt.Sprintf("[memory] OnInit complete — store init failed (%s)", time.Since(start)))
 			return
 		}
 		rt.store = s
@@ -42,8 +37,6 @@ func Register(e *sdk.Extension) {
 			Threshold: 50000,
 			Compact:   makeCompactHandler(x, s),
 		})
-
-		x.Log("debug", fmt.Sprintf("[memory] OnInit complete (%s)", time.Since(start)))
 	})
 
 	e.RegisterEventHandler(sdk.EventHandlerDef{
@@ -81,6 +74,8 @@ func Register(e *sdk.Extension) {
 	e.RegisterTool(rt.toolList())
 	e.RegisterTool(rt.toolRelate())
 	e.RegisterTool(rt.toolRelated())
+	e.RegisterTool(rt.toolDelete())
+	e.RegisterTool(rt.toolStatus(version))
 
 	e.RegisterCommand(rt.command(e))
 }

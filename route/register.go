@@ -29,8 +29,6 @@ func Register(e *sdk.Extension) {
 	s := &state{}
 
 	e.OnInitAppend(func(x *sdk.Extension) {
-		start := time.Now()
-		x.Log("debug", "[route] OnInit start")
 
 		s.cwd = x.CWD()
 		s.config = LoadConfig()
@@ -69,12 +67,6 @@ func Register(e *sdk.Extension) {
 		s.fbDir = fbDir
 		s.ready = true
 		s.mu.Unlock()
-
-		count := 0
-		if reg != nil {
-			count = len(reg.Components)
-		}
-		x.Log("debug", fmt.Sprintf("[route] OnInit complete — %d components indexed (%s)", count, time.Since(start)))
 	})
 
 	// Tool: route — explicit routing query from LLM

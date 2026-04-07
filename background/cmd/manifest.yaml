@@ -1,5 +1,5 @@
 name: background
-version: 0.1.0
+version: 0.2.0
 description: Run read-only background tasks with /bg and cancel them with /bg-cancel
 runtime: ./background
 intents:
@@ -8,7 +8,10 @@ intents:
 triggers:
   - /bg
   - /bg-cancel
+  - /bg-stop
+  - /cancel
   - background task
   - run in background
 capabilities:
   - commands
+  - tools

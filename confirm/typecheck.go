@@ -32,6 +32,7 @@ func TypeCheck(packages []string, root string) CheckResult {
 	args := append([]string{"build"}, packages...)
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = root
+	cmd.Env = cmdEnv()
 
 	start := time.Now()
 	out, err := cmd.CombinedOutput()

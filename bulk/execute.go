@@ -3,6 +3,8 @@ package bulk
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -43,7 +45,13 @@ func runOne(ctx context.Context, item Item, cmd Command, timeout time.Duration) 
 	itemCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	out, err := shellExec(itemCtx, item.Path, cmd.Shell, expanded)
+	// Use parent directory as working dir (files can't be chdir'd into).
+	workDir := item.Path
+	if info, err := os.Stat(item.Path); err == nil && !info.IsDir() {
+		workDir = filepath.Dir(item.Path)
+	}
+
+	out, err := shellExec(itemCtx, workDir, cmd.Shell, expanded)
 	if err != nil {
 		return Result{
 			Item:   item.Name,
@@ -96,6 +104,7 @@ func Execute(ctx context.Context, scanner Scanner, filter Filter, cmd Command, c
 			}
 		}
 		summary.Results = dryResults
+		summary.OkCount = len(matched)
 		summary.Message = fmt.Sprintf(
 			"%d items collected, %d matched filter. Dry run — pass dry_run:false to execute.",
 			len(items), len(matched),
@@ -114,6 +123,8 @@ func Execute(ctx context.Context, scanner Scanner, filter Filter, cmd Command, c
 			failed++
 		}
 	}
+	summary.OkCount = ok
+	summary.FailedCount = failed
 
 	if failed == 0 {
 		summary.Message = fmt.Sprintf("%d items collected, %d matched, %d succeeded.", len(items), len(matched), ok)

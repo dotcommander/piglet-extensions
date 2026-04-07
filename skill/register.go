@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
@@ -15,20 +14,15 @@ var store *Store
 
 // Register registers the skill extension's tools, command, message hook,
 // and schedules OnInit work via OnInitAppend.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	e.OnInitAppend(func(x *sdk.Extension) {
-		start := time.Now()
-		x.Log("debug", "[skill] OnInit start")
-
 		base, err := xdg.ConfigDir()
 		if err != nil {
-			x.Log("debug", fmt.Sprintf("[skill] OnInit complete — config dir error (%s)", time.Since(start)))
 			return
 		}
 		store = NewStore(filepath.Join(base, "skills"))
 		if len(store.List()) == 0 {
 			store = nil
-			x.Log("debug", fmt.Sprintf("[skill] OnInit complete — no skills found (%s)", time.Since(start)))
 			return
 		}
 
@@ -49,8 +43,6 @@ func Register(e *sdk.Extension) {
 			Content: b.String(),
 			Order:   25,
 		})
-
-		x.Log("debug", fmt.Sprintf("[skill] OnInit complete — %d skill(s) registered (%s)", len(store.List()), time.Since(start)))
 	})
 
 	// Tools
@@ -108,6 +100,19 @@ func Register(e *sdk.Extension) {
 				return sdk.ErrorResult(fmt.Sprintf("skill %q not found", name)), nil
 			}
 			return sdk.TextResult(content), nil
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "skill_status",
+		Description: "Show skill extension status: version, skill count, and skills directory path.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			if store == nil {
+				return sdk.TextResult(fmt.Sprintf("skill v%s\nNo skills loaded.", version)), nil
+			}
+			skills := store.List()
+			return sdk.TextResult(fmt.Sprintf("skill v%s\nSkills: %d loaded\nDirectory: %s", version, len(skills), store.Dir())), nil
 		},
 	})
 

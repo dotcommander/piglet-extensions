@@ -4,13 +4,11 @@ package prompts
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	sdk "github.com/dotcommander/piglet/sdk"
@@ -21,8 +19,6 @@ import (
 // and register one command per .md file found.
 func Register(e *sdk.Extension) {
 	e.OnInitAppend(func(ext *sdk.Extension) {
-		start := time.Now()
-		ext.Log("debug", "[prompts] OnInit start")
 
 		prompts := make(map[string]promptEntry)
 
@@ -49,7 +45,6 @@ func Register(e *sdk.Extension) {
 			})
 		}
 
-		ext.Log("debug", fmt.Sprintf("[prompts] OnInit complete — %d prompt(s) registered (%s)", len(prompts), time.Since(start)))
 	})
 }
 

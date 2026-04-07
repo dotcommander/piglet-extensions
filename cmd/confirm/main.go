@@ -15,7 +15,13 @@ func main() {
 	noTest := flag.Bool("no-test", false, "skip tests")
 	noLint := flag.Bool("no-lint", false, "skip lint")
 	jsonOut := flag.Bool("json", false, "JSON output")
+	version := flag.Bool("version", false, "print version")
 	flag.Parse()
+
+	if *version {
+		fmt.Println("confirm v0.2.0")
+		return
+	}
 
 	opts := confirm.Options{
 		NoTest: *noTest,

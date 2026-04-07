@@ -23,6 +23,7 @@ func RunTests(packages []string, root string) CheckResult {
 		cmd = exec.CommandContext(ctx, "go", append([]string{"test"}, args...)...)
 	}
 	cmd.Dir = root
+	cmd.Env = cmdEnv()
 
 	start := time.Now()
 	out, err := cmd.CombinedOutput()

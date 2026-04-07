@@ -5,18 +5,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Test
 
 ```bash
-make extensions              # build all → ~/.config/piglet/extensions/
-make extensions-<name>       # build one, e.g. make extensions-safeguard
-make cli                     # build CLI tools → ~/go/bin/
-make cli-<name>              # build one CLI, e.g. make cli-repomap
-make clean                   # remove installed extensions
+just build                   # build everything: extensions + cli + packs
+just extensions              # build all extensions → ~/.config/piglet/extensions/
+just extensions-<name>       # build one, e.g. just extensions-safeguard
+just cli                     # build all CLI tools → ~/go/bin/
+just cli-<name>              # build one CLI, e.g. just cli-repomap
+just packs                   # build all pack binaries
+just clean                   # remove installed extensions
+just verify                  # build + test
+just test                    # run all tests
 go test ./<name>/...         # test one extension
 go test -run TestFoo ./memory/  # single test
 ```
 
 ## CLI Tools
 
-Standalone command-line tools built from `cmd/`. Install with `make cli`.
+Standalone command-line tools built from `cmd/`. Install with `just cli`.
 
 | Tool | Description |
 |------|-------------|
@@ -223,6 +227,19 @@ extest -m show -e autotitle_status ~/.config/piglet/extensions/autotitle/autotit
 ```
 
 In interactive mode, use `event <type> <json>` to dispatch events and `tool <name> <json>` to check status.
+
+### Host RPC Mocking
+
+extest automatically mocks these host RPC methods so extensions that call host APIs work end-to-end:
+
+| Method | Mock Response |
+|--------|--------------|
+| `host/chat` | Returns `-mock` text (default: "Test session title") |
+| `host/runBackground` | Returns success |
+| `host/isBackgroundRunning` | Returns `{"running": false}` |
+| `host/cancelBackground` | Returns success |
+
+Any other `host/*` method returns a `-32601` error. Pass `-mock ""` to disable chat mocking and observe timeouts.
 
 ## Architecture
 

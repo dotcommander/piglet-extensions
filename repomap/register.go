@@ -55,7 +55,7 @@ var repomapToolParams = map[string]any{
 }
 
 // Register wires the repomap extension into a shared SDK extension.
-func Register(e *sdk.Extension) {
+func Register(e *sdk.Extension, version string) {
 	var (
 		rm      *Map
 		extRef  *sdk.Extension
@@ -281,6 +281,19 @@ func Register(e *sdk.Extension) {
 			default:
 				return sdk.ErrorResult("unknown action: " + action + " (expected 'scan' or 'query')"), nil
 			}
+		},
+	})
+
+	e.RegisterTool(sdk.ToolDef{
+		Name:        "repomap_status",
+		Description: "Show repomap extension status: version, build state, and file/symbol counts.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
+			state := "not built"
+			if isBuilt() {
+				state = "built"
+			}
+			return sdk.TextResult(fmt.Sprintf("repomap v%s\n  State: %s", version, state)), nil
 		},
 	})
 }

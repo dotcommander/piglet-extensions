@@ -29,6 +29,8 @@ type Result struct {
 type Summary struct {
 	TotalCollected int      `json:"total_collected"`
 	MatchedFilter  int      `json:"matched_filter"`
+	OkCount        int      `json:"ok_count,omitzero"`
+	FailedCount    int      `json:"failed_count,omitzero"`
 	Results        []Result `json:"results"`
 	Message        string   `json:"message"`
 }

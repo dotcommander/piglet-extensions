@@ -1,0 +1,10 @@
+name: tasklist
+version: 0.2.0
+runtime: ./tasklist
+description: Project task management with subtasks, groups, plan notes, and linking
+capabilities:
+  - tools
+  - commands
+  - prompt
+intents: [plan, track]
+triggers: [task, todo, tasklist, checklist, backlog, plan, track]

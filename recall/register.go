@@ -44,8 +44,6 @@ func Register(e *sdk.Extension) {
 		} else {
 			idx = loaded
 		}
-		docCount, termCount := idx.Stats()
-		x.Log("debug", fmt.Sprintf("[recall] index loaded: %d docs, %d terms", docCount, termCount))
 	})
 
 	registerEventHandler(e)

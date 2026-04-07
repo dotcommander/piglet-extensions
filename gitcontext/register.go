@@ -26,15 +26,10 @@ const (
 // git context into the system prompt.
 func Register(e *sdk.Extension) {
 	e.OnInitAppend(func(ext *sdk.Extension) {
-		start := time.Now()
-		ext.Log("debug", "[gitcontext] OnInit start")
-
 		cwd := ext.CWD()
-		content := buildGitContext(cwd, ext)
-		ext.Log("debug", fmt.Sprintf("[gitcontext] git commands done (%s)", time.Since(start)))
+		content := buildGitContext(cwd)
 
 		if content == "" {
-			ext.Log("debug", fmt.Sprintf("[gitcontext] OnInit complete — no changes (%s)", time.Since(start)))
 			return
 		}
 		ext.RegisterPromptSection(sdk.PromptSectionDef{
@@ -42,11 +37,10 @@ func Register(e *sdk.Extension) {
 			Content: content,
 			Order:   promptOrder,
 		})
-		ext.Log("debug", fmt.Sprintf("[gitcontext] OnInit complete (%s)", time.Since(start)))
 	})
 }
 
-func buildGitContext(cwd string, ext *sdk.Extension) string {
+func buildGitContext(cwd string) string {
 	timeout := defaultGitCommandTimeout
 
 	var diffStat, log, hunks string
@@ -55,21 +49,15 @@ func buildGitContext(cwd string, ext *sdk.Extension) string {
 
 	go func() {
 		defer wg.Done()
-		t := time.Now()
 		diffStat = gitRun(cwd, timeout, "diff", "--stat")
-		ext.Log("debug", fmt.Sprintf("[gitcontext] git diff --stat done (%s)", time.Since(t)))
 	}()
 	go func() {
 		defer wg.Done()
-		t := time.Now()
 		log = gitRun(cwd, timeout, "log", "--oneline", fmt.Sprintf("-%d", defaultMaxLogLines))
-		ext.Log("debug", fmt.Sprintf("[gitcontext] git log done (%s)", time.Since(t)))
 	}()
 	go func() {
 		defer wg.Done()
-		t := time.Now()
 		hunks = gitRun(cwd, timeout, "diff", "--no-color")
-		ext.Log("debug", fmt.Sprintf("[gitcontext] git diff --no-color done (%s)", time.Since(t)))
 	}()
 	wg.Wait()
 

@@ -111,6 +111,7 @@ func listPackages(root string) ([]goListEntry, error) {
 
 	cmd := exec.CommandContext(ctx, "go", "list", "-json", "./...")
 	cmd.Dir = root
+	cmd.Env = cmdEnv()
 
 	out, err := cmd.Output()
 	if err != nil {
