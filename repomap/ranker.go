@@ -12,6 +12,7 @@ type RankedFile struct {
 	Score       int    // higher = more important
 	Tag         string // e.g. "entry", ""
 	DetailLevel int    // set by BudgetFiles: -1=omit, 0=header, 1=summary, 2=symbols, 3=symbols+fields
+	ImportedBy  int    // number of files that import this file's package
 }
 
 // RankFiles scores and sorts files by importance.
@@ -85,49 +86,78 @@ func applyReferenceCounts(ranked []RankedFile, files []*FileSymbols) {
 		return
 	}
 
-	if files[0].Language == "go" {
-		applyGoReferenceCounts(ranked, files)
-	} else {
-		applyBasenameReferenceCounts(ranked, files)
+	// Use Go import-path matching for Go projects; fall back to basename
+	// matching for other languages. Check all files, not just the first,
+	// since parseFiles appends Go results before non-Go results but callers
+	// should not depend on that ordering.
+	for _, f := range files {
+		if f.Language == "go" {
+			applyGoReferenceCounts(ranked, files)
+			return
+		}
 	}
+	applyBasenameReferenceCounts(ranked, files)
 }
 
 // applyGoReferenceCounts scores Go files by how many other files import their package.
 func applyGoReferenceCounts(ranked []RankedFile, files []*FileSymbols) {
-	// Map importPath → index in ranked slice.
-	importIndex := make(map[string]int, len(files))
+	// Map importPath → all file indices sharing that package.
+	importIndex := make(map[string][]int, len(files))
 	for i, f := range files {
 		if f.ImportPath != "" {
-			importIndex[f.ImportPath] = i
+			importIndex[f.ImportPath] = append(importIndex[f.ImportPath], i)
 		}
 	}
 
+	// Count unique importers per package.
+	importerCount := make(map[string]int, len(importIndex))
 	for _, f := range files {
+		seen := make(map[string]bool)
 		for _, imp := range f.Imports {
-			if idx, ok := importIndex[imp]; ok {
-				ranked[idx].Score += 10
+			if _, ok := importIndex[imp]; ok && !seen[imp] {
+				seen[imp] = true
+				importerCount[imp]++
 			}
+		}
+	}
+
+	// Distribute score and ImportedBy to all files in each imported package.
+	for pkg, count := range importerCount {
+		for _, idx := range importIndex[pkg] {
+			ranked[idx].Score += count * 10
+			ranked[idx].ImportedBy = count
 		}
 	}
 }
 
 // applyBasenameReferenceCounts scores non-Go files by basename matching in imports.
 func applyBasenameReferenceCounts(ranked []RankedFile, files []*FileSymbols) {
-	// Map basename (without ext) → index in ranked slice.
-	basenameIndex := make(map[string]int, len(files))
+	// Map basename (without ext) → all file indices sharing that name.
+	basenameIndex := make(map[string][]int, len(files))
 	for i, f := range files {
 		name := strings.TrimSuffix(filepath.Base(f.Path), filepath.Ext(f.Path))
-		basenameIndex[name] = i
+		basenameIndex[name] = append(basenameIndex[name], i)
 	}
 
+	// Count unique importers per basename.
+	importerCount := make(map[string]int, len(basenameIndex))
 	for _, f := range files {
+		seen := make(map[string]bool)
 		for _, imp := range f.Imports {
-			// Normalize the import to its last path segment, without extension.
 			seg := filepath.Base(imp)
 			seg = strings.TrimSuffix(seg, filepath.Ext(seg))
-			if idx, ok := basenameIndex[seg]; ok {
-				ranked[idx].Score += 10
+			if _, ok := basenameIndex[seg]; ok && !seen[seg] {
+				seen[seg] = true
+				importerCount[seg]++
 			}
+		}
+	}
+
+	// Distribute score and ImportedBy to all files matching each basename.
+	for name, count := range importerCount {
+		for _, idx := range basenameIndex[name] {
+			ranked[idx].Score += count * 10
+			ranked[idx].ImportedBy = count
 		}
 	}
 }

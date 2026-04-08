@@ -26,10 +26,11 @@ func ParseGoFile(path, root string) (*FileSymbols, error) {
 	}
 
 	fs := &FileSymbols{
-		Path:       relPath,
-		Language:   "go",
-		Package:    file.Name.Name,
-		ImportPath: resolveImportPath(path, root),
+		Path:        relPath,
+		Language:    "go",
+		Package:     file.Name.Name,
+		ImportPath:  resolveImportPath(path, root),
+		ParseMethod: "ast",
 	}
 
 	// Collect imports.

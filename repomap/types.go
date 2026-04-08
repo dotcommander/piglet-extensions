@@ -12,10 +12,11 @@ type Symbol struct {
 
 // FileSymbols holds all symbols extracted from a single source file.
 type FileSymbols struct {
-	Path       string   // relative path from project root
-	Language   string   // language ID
-	Package    string   // Go package name (empty for non-Go)
-	ImportPath string   // Go import path from module (empty for non-Go)
-	Symbols    []Symbol
-	Imports    []string // import paths (Go) or module names (other)
+	Path        string // relative path from project root
+	Language    string // language ID
+	Package     string // Go package name (empty for non-Go)
+	ImportPath  string // Go import path from module (empty for non-Go)
+	Symbols     []Symbol
+	Imports     []string // import paths (Go) or module names (other)
+	ParseMethod string   // "ast", "ctags", or "regex" — signals symbol fidelity
 }

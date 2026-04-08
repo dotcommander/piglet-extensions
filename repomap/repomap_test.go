@@ -262,6 +262,16 @@ func TestRankFiles(t *testing.T) {
 	assert.Contains(t, paths, "core/agent.go")
 	assert.Contains(t, paths, "internal/deep/nested/helper.go")
 
+	// Core files (same package) should each have ImportedBy=3 from the three consumers.
+	for _, r := range ranked {
+		if r.ImportPath == "mod/core" {
+			assert.Equal(t, 3, r.ImportedBy, "%s must have ImportedBy=3", r.Path)
+		}
+		if r.ImportPath == "mod/internal/deep/nested" {
+			assert.Equal(t, 0, r.ImportedBy, "deep file with no importers must have ImportedBy=0")
+		}
+	}
+
 	// The deep file (depth penalty, no importers) must rank last among files with symbols.
 	// Files with no symbols (consumers) rank at the bottom since they have no symbols.
 	// Find last file with symbols.
@@ -304,7 +314,8 @@ func TestFormatMap(t *testing.T) {
 				{Name: "New", Kind: "function"},
 			},
 		},
-		Score: 30,
+		Score:      30,
+		ImportedBy: 3,
 	}
 	low := RankedFile{
 		FileSymbols: FileSymbols{
@@ -320,7 +331,7 @@ func TestFormatMap(t *testing.T) {
 
 	assert.True(t, strings.HasPrefix(out, "## Repository Map"), "output must start with '## Repository Map'")
 	assert.Contains(t, out, "[entry]")
-	assert.Contains(t, out, "[30 refs]")
+	assert.Contains(t, out, "[imported by 3]")
 
 	// Zero-score file must have no annotation bracket.
 	for line := range strings.SplitSeq(out, "\n") {

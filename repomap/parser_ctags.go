@@ -173,9 +173,10 @@ func ParseWithCtags(ctx context.Context, root string, files []FileInfo) ([]*File
 			out = append(out, *s)
 		}
 		result = append(result, &FileSymbols{
-			Path:     f.Path,
-			Language: f.Language,
-			Symbols:  out,
+			Path:        f.Path,
+			Language:    f.Language,
+			Symbols:     out,
+			ParseMethod: "ctags",
 		})
 	}
 	return result, nil
@@ -226,7 +227,7 @@ func isExportedForLang(name, lang string) bool {
 	}
 	switch lang {
 	case "go":
-		return name[0] >= 'A' && name[0] <= 'Z'
+		return isExported(name)
 	case "python":
 		return !strings.HasPrefix(name, "_")
 	default:

@@ -23,11 +23,11 @@ var (
 // --- Python patterns ---
 
 var (
-	pyFunc    = regexp.MustCompile(`^def\s+([A-Za-z]\w*)\s*\(`)
-	pyClass   = regexp.MustCompile(`^class\s+(\w+)`)
-	pyConst   = regexp.MustCompile(`^([A-Z][A-Z_0-9]+)\s*=`)
-	pyImport  = regexp.MustCompile(`^import\s+(\w+)`)
-	pyFrom    = regexp.MustCompile(`^from\s+(\w+)`)
+	pyFunc   = regexp.MustCompile(`^def\s+([A-Za-z]\w*)\s*\(`)
+	pyClass  = regexp.MustCompile(`^class\s+(\w+)`)
+	pyConst  = regexp.MustCompile(`^([A-Z][A-Z_0-9]+)\s*=`)
+	pyImport = regexp.MustCompile(`^import\s+(\w+)`)
+	pyFrom   = regexp.MustCompile(`^from\s+(\w+)`)
 )
 
 // --- Rust patterns ---
@@ -87,8 +87,9 @@ func ParseGenericFile(path, root, language string) (*FileSymbols, error) {
 	}
 
 	fs := &FileSymbols{
-		Path:     rel,
-		Language: language,
+		Path:        rel,
+		Language:    language,
+		ParseMethod: "regex",
 	}
 
 	lines := strings.Split(string(data), "\n")
@@ -111,7 +112,7 @@ func ParseGenericFile(path, root, language string) (*FileSymbols, error) {
 		parseRuby(lines, fs)
 	case "php":
 		parsePHP(lines, fs)
-	// swift, kotlin, lua, zig — unsupported, return empty
+		// swift, kotlin, lua, zig — unsupported, return empty
 	}
 
 	return fs, nil

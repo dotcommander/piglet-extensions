@@ -197,16 +197,22 @@ func formatFileBlockDetail(f RankedFile) string {
 	return b.String()
 }
 
-// formatFileLine returns the header line for a file block (path + tag annotation).
+// formatFileLine returns the header line for a file block (path + tag/badge annotations).
 func formatFileLine(f RankedFile) string {
-	switch {
-	case f.Tag == "entry":
-		return fmt.Sprintf("%s [entry]\n", f.Path)
-	case f.Score > 0:
-		return fmt.Sprintf("%s [%d refs]\n", f.Path, f.Score)
-	default:
-		return fmt.Sprintf("%s\n", f.Path)
+	var tags []string
+	if f.Tag == "entry" {
+		tags = append(tags, "entry")
 	}
+	if f.ImportedBy > 0 {
+		tags = append(tags, fmt.Sprintf("imported by %d", f.ImportedBy))
+	}
+	if f.ParseMethod == "regex" {
+		tags = append(tags, "inferred")
+	}
+	if len(tags) == 0 {
+		return f.Path + "\n"
+	}
+	return fmt.Sprintf("%s [%s]\n", f.Path, strings.Join(tags, ", "))
 }
 
 func summarizeSymbols(f RankedFile) []symbolGroup {
