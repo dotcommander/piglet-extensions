@@ -13,6 +13,8 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.1.0"
+
 const (
 	maxExtractBytes    = 32 * 1024 // 32 KB per session for indexing
 	hookScoreThreshold = 0.3

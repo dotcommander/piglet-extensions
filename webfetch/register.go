@@ -11,11 +11,13 @@ import (
 	"github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.3.0"
+
 //go:embed defaults/prompt.md
 var defaultPrompt string
 
 // Register registers the webfetch extension's tools and prompt section.
-func Register(e *sdk.Extension, version string) {
+func Register(e *sdk.Extension) {
 	cfg, err := LoadConfig()
 	if err != nil {
 		slog.Error("webfetch: failed to load config", "error", err)
@@ -23,12 +25,22 @@ func Register(e *sdk.Extension, version string) {
 
 	client := NewWithConfig(cfg)
 
+	registerPromptSection(e)
+	registerFetchTool(e, client)
+	registerSearchTool(e, client)
+	registerStoredTool(e, client)
+	registerStatusTool(e, client, cfg)
+}
+
+func registerPromptSection(e *sdk.Extension) {
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Web Access",
 		Content: xdg.LoadOrCreateExt("webfetch", "prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   85,
 	})
+}
 
+func registerFetchTool(e *sdk.Extension, client *Client) {
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "web_fetch",
 		Description: "Fetch a URL and return its text content. By default uses a reader that converts HTML to clean markdown. Set raw=true to return the raw HTML.",
@@ -61,7 +73,9 @@ func Register(e *sdk.Extension, version string) {
 			return sdk.TextResult(content), nil
 		},
 	})
+}
 
+func registerSearchTool(e *sdk.Extension, client *Client) {
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "web_search",
 		Description: "Search the web and return results as a markdown list with titles, URLs, and snippets.",
@@ -85,7 +99,7 @@ func Register(e *sdk.Extension, version string) {
 			if query == "" {
 				return sdk.ErrorResult("query is required"), nil
 			}
-			limit := 5
+			limit := defaultSearchLimit
 			if v, ok := args["limit"].(float64); ok && int(v) > 0 {
 				limit = int(v)
 			}
@@ -97,7 +111,9 @@ func Register(e *sdk.Extension, version string) {
 			return sdk.TextResult(FormatResults(results)), nil
 		},
 	})
+}
 
+func registerStoredTool(e *sdk.Extension, client *Client) {
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "webfetch_get_stored",
 		Description: "Retrieve cached content from a previous web_fetch or web_search call. Useful when content was truncated in the original response.",
@@ -115,7 +131,7 @@ func Register(e *sdk.Extension, version string) {
 			},
 		},
 		PromptHint: "Retrieve cached web content",
-		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
+		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
 			url, _ := args["url"].(string)
 			query, _ := args["query"].(string)
 
@@ -136,14 +152,16 @@ func Register(e *sdk.Extension, version string) {
 			return sdk.ErrorResult("url or query is required"), nil
 		},
 	})
+}
 
+func registerStatusTool(e *sdk.Extension, client *Client, cfg *Config) {
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "webfetch_status",
 		Description: "Show webfetch extension status: version, session cache size, and provider counts.",
 		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
 			urls, queries := client.GetStorage().List()
-			return sdk.TextResult(fmt.Sprintf("webfetch v%s\n  Session cache: %d fetches, %d searches\n  Config: %s", version, len(urls), len(queries), cfg.Provider())), nil
+			return sdk.TextResult(fmt.Sprintf("webfetch v%s\n  Session cache: %d fetches, %d searches\n  Config: %s", Version, len(urls), len(queries), cfg.Provider())), nil
 		},
 	})
 }

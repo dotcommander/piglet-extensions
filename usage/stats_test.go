@@ -2,6 +2,7 @@ package usage
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -103,21 +104,21 @@ func TestFormatSummary(t *testing.T) {
 	summary := stats.FormatSummary()
 
 	// Check key sections appear
-	if !contains(summary, "CUMULATIVE TOTALS") {
+	if !strings.Contains(summary, "CUMULATIVE TOTALS") {
 		t.Error("summary missing CUMULATIVE TOTALS")
 	}
-	if !contains(summary, "CURRENT PROMPT BREAKDOWN") {
+	if !strings.Contains(summary, "CURRENT PROMPT BREAKDOWN") {
 		t.Error("summary missing CURRENT PROMPT BREAKDOWN")
 	}
-	if !contains(summary, "EXTENSION PROMPT SECTIONS") {
+	if !strings.Contains(summary, "EXTENSION PROMPT SECTIONS") {
 		t.Error("summary missing EXTENSION PROMPT SECTIONS")
 	}
 
 	// Check values
-	if !contains(summary, "Cache Read") {
+	if !strings.Contains(summary, "Cache Read") {
 		t.Error("summary missing Cache Read")
 	}
-	if !contains(summary, "memory") {
+	if !strings.Contains(summary, "memory") {
 		t.Error("summary missing memory extension")
 	}
 }
@@ -192,17 +193,4 @@ func TestFormatNumber(t *testing.T) {
 			}
 		})
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

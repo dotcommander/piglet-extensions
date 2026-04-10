@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("suggest", "0.1.0")
+	e := sdk.New("suggest", suggest.Version)
 	suggest.Register(e)
 	e.Run()
 }

@@ -13,11 +13,11 @@ import (
 
 func main() {
 	e := sdk.New("pack-workflow", "0.1.0")
-	safety.RegisterWithVersion(e, "pipeline", "0.2.0", pipeline.Register)
-	safety.RegisterWithVersion(e, "bulk", "0.2.0", bulk.Register)
-	safety.RegisterWithVersion(e, "webfetch", "0.3.0", webfetch.Register)
+	safety.Register(e, "pipeline", pipeline.Register)
+	safety.Register(e, "bulk", bulk.Register)
+	safety.Register(e, "webfetch", webfetch.Register)
 	safety.Register(e, "cache", cache.Register)
-	safety.RegisterWithVersion(e, "usage", "0.2.0", usage.Register)
+	safety.Register(e, "usage", usage.Register)
 	safety.Register(e, "modelsdev", modelsdev.Register)
 	e.Run()
 }

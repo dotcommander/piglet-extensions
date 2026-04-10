@@ -15,6 +15,8 @@ import (
 //go:embed defaults/prompt.md
 var defaultPrompt string
 
+const Version = "0.1.0"
+
 // Register adds loop's prompt section and commands to the extension.
 func Register(e *sdk.Extension) {
 	s := &Scheduler{}

@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("tasklist", "0.2.0")
-	tasklist.Register(e, "0.2.0")
+	e := sdk.New("tasklist", tasklist.Version)
+	tasklist.Register(e)
 	e.Run()
 }

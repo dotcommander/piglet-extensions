@@ -13,21 +13,20 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
-const behaviorOrder = 10
+const (
+	behaviorOrder = 10
+	// Version is the behavior extension version.
+	Version = "0.2.0"
+)
 
 var (
 	mu       sync.Mutex
-	version  string
 	loaded   string // content loaded from behavior.md
 	filePath string // resolved file path
 )
 
 // Register adds the behavior prompt section loader and status tool.
-func Register(e *sdk.Extension, ver string) {
-	mu.Lock()
-	version = ver
-	mu.Unlock()
-
+func Register(e *sdk.Extension) {
 	e.OnInitAppend(func(ext *sdk.Extension) {
 		content := strings.TrimSpace(xdg.LoadOrCreateExt("behavior", "behavior.md", ""))
 
@@ -57,7 +56,6 @@ func behaviorStatusTool() sdk.ToolDef {
 		Description: "Show behavior extension status: loaded guidelines summary, file path, version",
 		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
 			mu.Lock()
-			ver := version
 			content := loaded
 			path := filePath
 			mu.Unlock()
@@ -70,7 +68,7 @@ func behaviorStatusTool() sdk.ToolDef {
 			}
 
 			var b strings.Builder
-			fmt.Fprintf(&b, "behavior %s\n", ver)
+			fmt.Fprintf(&b, "behavior %s\n", Version)
 			fmt.Fprintf(&b, "  State: %s\n", state)
 			fmt.Fprintf(&b, "  File:  %s\n", path)
 			if strings.TrimSpace(content) != "" {

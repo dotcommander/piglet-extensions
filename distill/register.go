@@ -19,6 +19,8 @@ import (
 //go:embed defaults/extract-prompt.md
 var defaultPrompt string
 
+const Version = "0.1.0"
+
 const (
 	complexityThreshold = 20
 	chatTimeout         = 30 * time.Second

@@ -9,12 +9,18 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.2.0"
+
 // Register adds safeguard's interceptor to the extension.
 // If the configured profile is "off", the interceptor is still registered but
 // its Before hook is a no-op (allow-all). This keeps the pack entry point simple.
 func Register(e *sdk.Extension) {
 	cfg := LoadConfig()
-	compiled := CompilePatterns(cfg.Patterns)
+	compiled, err := CompilePatterns(cfg.Patterns)
+	if err != nil {
+		e.Log("warn", fmt.Sprintf("[safeguard] pattern compilation failed: %v", err))
+		compiled = nil
+	}
 	audit := NewAuditLogger()
 
 	// blocker is set in OnInit (when CWD is available) and read atomically in Before.

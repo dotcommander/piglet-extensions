@@ -92,7 +92,7 @@ piglet.registerCommand({
 });
 ```
 
-The command does nothing if the directory already exists — it will not overwrite an existing extension.
+The command refuses if the directory already exists — it will not overwrite an existing extension.
 
 ## How It Works (Developer Notes)
 
@@ -100,9 +100,11 @@ The command does nothing if the directory already exists — it will not overwri
 
 **Extensions directory**: The handler calls `e.ExtensionsDir(ctx)` — a host RPC method — to resolve the correct install path. This avoids hardcoding `~/.config/piglet/extensions/` and respects any host configuration overrides.
 
-**File writes**: Both files are written with `os.WriteFile` directly (no atomic rename needed — these are new files, not updates to existing ones).
+**File writes**: Both files are written atomically via `xdg.WriteFileAtomic` (temp file + rename). The command checks for an existing directory before writing and refuses to overwrite.
 
-**Template substitution**: The TypeScript template uses `strings.NewReplacer("{{NAME}}", name)` to replace `{{NAME}}` placeholders. The manifest uses `fmt.Sprintf` directly.
+**Template substitution**: Templates are embedded from `scaffold/defaults/*.tmpl` using `//go:embed`. The `strings.NewReplacer` substitutes `{{NAME}}` placeholders at runtime.
+
+**Input validation**: Extension names must match `[a-z][a-z0-9_-]+`. This rejects path traversal (`../`), spaces, special characters, and uppercase.
 
 **TypeScript target**: The skeleton uses the `bun` runtime. To scaffold a Go extension instead, use the extension source in this repo (`lsp/`, `repomap/`, etc.) as a reference and follow the architecture described in `CLAUDE.md`.
 

@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("subagent", "0.1.0")
+	e := sdk.New("subagent", subagent.Version)
 	subagent.Register(e)
 	e.Run()
 }

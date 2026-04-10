@@ -11,7 +11,6 @@ func TestStatusEmptyContent(t *testing.T) {
 
 	mu.Lock()
 	loaded = "  \n  \n  "
-	version = "0.2.0"
 	filePath = "/tmp/test.md"
 	mu.Unlock()
 

@@ -5,11 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // ExaProvider implements SearchProvider and FetchProvider using the Exa API.
@@ -30,7 +28,7 @@ func NewExaProvider(apiKey string, cfg ExaConfig) *ExaProvider {
 		searchURL:   cfg.SearchURL,
 		contentsURL: cfg.ContentsURL,
 		apiKey:      apiKey,
-		http:        &http.Client{Timeout: 30 * time.Second},
+		http:        &http.Client{Timeout: fetchTimeout},
 	}
 }
 
@@ -38,7 +36,7 @@ func (e *ExaProvider) Name() string { return "exa" }
 
 func (e *ExaProvider) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
 	if limit <= 0 {
-		limit = 5
+		limit = defaultSearchLimit
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
@@ -60,19 +58,9 @@ func (e *ExaProvider) Search(ctx context.Context, query string, limit int) ([]Se
 	req.Header.Set("x-api-key", e.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := e.http.Do(req)
-	if err != nil {
-		return nil, &HTTPError{URL: e.searchURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, &HTTPError{URL: e.searchURL, StatusCode: resp.StatusCode}
-	}
-
 	var envelope exaSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+	if err := doJSONRequest(e.http, req, &envelope); err != nil {
+		return nil, err
 	}
 
 	items := envelope.Results
@@ -113,19 +101,9 @@ func (e *ExaProvider) Fetch(ctx context.Context, rawURL string) (string, error) 
 	req.Header.Set("x-api-key", e.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := e.http.Do(req)
+	data, err := doRequest(e.http, req)
 	if err != nil {
-		return "", &HTTPError{URL: e.contentsURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return "", &HTTPError{URL: e.contentsURL, StatusCode: resp.StatusCode}
-	}
-
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
-	if err != nil {
-		return "", fmt.Errorf("read body: %w", err)
+		return "", err
 	}
 
 	var envelope exaContentsResponse
@@ -137,10 +115,7 @@ func (e *ExaProvider) Fetch(ctx context.Context, rawURL string) (string, error) 
 		return "", fmt.Errorf("no content from exa")
 	}
 
-	content := envelope.Results[0].Text
-	if len(content) > maxBodyBytes {
-		content = content[:maxBodyBytes] + "\n\n[Content truncated at 100KB]"
-	}
+	content := truncateBody(envelope.Results[0].Text)
 
 	slog.Debug("exa fetch completed", "url", rawURL)
 	return content, nil

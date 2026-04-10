@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("coordinator", "0.1.0")
+	e := sdk.New("coordinator", coordinator.Version)
 	coordinator.Register(e)
 	e.Run()
 }

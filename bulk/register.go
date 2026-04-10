@@ -17,8 +17,11 @@ import (
 //go:embed defaults/prompt.md
 var defaultPrompt string
 
+// Version is the bulk extension version.
+const Version = "0.2.0"
+
 // Register registers the bulk extension's tool and prompt section.
-func Register(e *sdk.Extension, version string) {
+func Register(e *sdk.Extension) {
 	e.RegisterPromptSection(sdk.PromptSectionDef{
 		Title:   "Bulk Operations",
 		Content: xdg.LoadOrCreateExt("bulk", "prompt.md", strings.TrimSpace(defaultPrompt)),
@@ -88,7 +91,7 @@ func Register(e *sdk.Extension, version string) {
 			"properties": map[string]any{},
 		},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
-			return sdk.TextResult(fmt.Sprintf("bulk v%s", version)), nil
+			return sdk.TextResult(fmt.Sprintf("bulk v%s", Version)), nil
 		},
 	})
 }

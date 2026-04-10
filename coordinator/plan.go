@@ -17,6 +17,25 @@ type SubTask struct {
 	MaxTurns int    `json:"max_turns"`
 }
 
+const (
+	planModel       = "small"
+	planMaxTokens   = 1024
+	maxSubTasks     = 5
+	defaultMaxTurns = 10
+	maxTurnsCap     = 20
+	fallbackModel   = "default"
+)
+
+// fallbackTask returns a single-task fallback that delegates the entire request to one agent.
+func fallbackTask(request string) []SubTask {
+	return []SubTask{{
+		Task:     request,
+		Tools:    "all",
+		Model:    fallbackModel,
+		MaxTurns: defaultMaxTurns,
+	}}
+}
+
 // PlanTasks decomposes a user request into sub-tasks using LLM classification.
 func PlanTasks(ctx context.Context, ext *sdk.Extension, request string, caps []Capability) ([]SubTask, error) {
 	capSummary := FormatCapabilities(caps)
@@ -35,41 +54,23 @@ func PlanTasks(ctx context.Context, ext *sdk.Extension, request string, caps []C
 	resp, err := ext.Chat(ctx, sdk.ChatRequest{
 		System:    LoadPlanPrompt(),
 		Messages:  []sdk.ChatMessage{{Role: "user", Content: prompt}},
-		Model:     "small",
-		MaxTokens: 1024,
+		Model:     planModel,
+		MaxTokens: planMaxTokens,
 	})
 	if err != nil {
-		// Fallback: single task with the whole request
-		return []SubTask{{
-			Task:     request,
-			Tools:    "all",
-			Model:    "default",
-			MaxTurns: 10,
-		}}, nil
+		return fallbackTask(request), nil
 	}
 
 	var tasks []SubTask
 	if err := json.Unmarshal([]byte(resp.Text), &tasks); err != nil {
-		// JSON parse failed — single task fallback
-		return []SubTask{{
-			Task:     request,
-			Tools:    "all",
-			Model:    "default",
-			MaxTurns: 10,
-		}}, nil
+		return fallbackTask(request), nil
 	}
 
-	// Validate and cap
 	if len(tasks) == 0 {
-		return []SubTask{{
-			Task:     request,
-			Tools:    "all",
-			Model:    "default",
-			MaxTurns: 10,
-		}}, nil
+		return fallbackTask(request), nil
 	}
-	if len(tasks) > 5 {
-		tasks = tasks[:5]
+	if len(tasks) > maxSubTasks {
+		tasks = tasks[:maxSubTasks]
 	}
 
 	for i := range tasks {
@@ -77,10 +78,10 @@ func PlanTasks(ctx context.Context, ext *sdk.Extension, request string, caps []C
 			tasks[i].Tools = "all"
 		}
 		if tasks[i].Model == "" {
-			tasks[i].Model = "default"
+			tasks[i].Model = fallbackModel
 		}
-		if tasks[i].MaxTurns <= 0 || tasks[i].MaxTurns > 20 {
-			tasks[i].MaxTurns = 10
+		if tasks[i].MaxTurns <= 0 || tasks[i].MaxTurns > maxTurnsCap {
+			tasks[i].MaxTurns = defaultMaxTurns
 		}
 	}
 

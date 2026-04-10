@@ -26,6 +26,37 @@ type Store struct {
 	skills []Skill
 }
 
+// FormatOpts controls how FormatList renders a skill listing.
+type FormatOpts struct {
+	Prefix    string // header line before the list (e.g. "Available skills:\n")
+	Indent    string // per-item prefix (e.g. "- " or "  ")
+	Separator string // between name and description (e.g. ": " or " — ")
+	Triggers  bool   // include trigger keywords
+}
+
+// FormatList formats skills as a human-readable listing.
+func FormatList(skills []Skill, opts FormatOpts) string {
+	var b strings.Builder
+	if opts.Prefix != "" {
+		b.WriteString(opts.Prefix)
+	}
+	for _, sk := range skills {
+		b.WriteString(opts.Indent)
+		b.WriteString(sk.Name)
+		if sk.Description != "" {
+			b.WriteString(opts.Separator)
+			b.WriteString(sk.Description)
+		}
+		if opts.Triggers && len(sk.Triggers) > 0 {
+			b.WriteString(" (triggers: ")
+			b.WriteString(strings.Join(sk.Triggers, ", "))
+			b.WriteByte(')')
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 // NewStore scans dir for .md files with YAML frontmatter and caches metadata.
 func NewStore(dir string) *Store {
 	s := &Store{dir: dir}
@@ -87,11 +118,10 @@ func (s *Store) scan() {
 			continue
 		}
 		path := filepath.Join(s.dir, e.Name())
-		sk, err := parseSkill(path)
+		sk, body, err := parseSkillFile(path)
 		if err != nil {
 			continue
 		}
-		body, _ := readBody(path)
 		sk.body = body
 		s.skills = append(s.skills, sk)
 	}
@@ -99,56 +129,35 @@ func (s *Store) scan() {
 
 var frontmatterSep = []byte("---")
 
-func parseSkill(path string) (Skill, error) {
+// parseSkillFile reads a single .md file, extracts YAML frontmatter metadata,
+// and returns the skill descriptor and its body content in one pass.
+func parseSkillFile(path string) (Skill, string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Skill{}, err
-	}
-
-	// Parse YAML frontmatter between --- delimiters
-	data = bytes.TrimSpace(data)
-	if !bytes.HasPrefix(data, frontmatterSep) {
-		// No frontmatter — use filename as name
-		name := strings.TrimSuffix(filepath.Base(path), ".md")
-		return Skill{Name: name, Path: path}, nil
-	}
-
-	rest := data[len(frontmatterSep):]
-	end := bytes.Index(rest, frontmatterSep)
-	if end < 0 {
-		name := strings.TrimSuffix(filepath.Base(path), ".md")
-		return Skill{Name: name, Path: path}, nil
-	}
-
-	var sk Skill
-	if err := yaml.Unmarshal(rest[:end], &sk); err != nil {
-		return Skill{}, err
-	}
-	if sk.Name == "" {
-		sk.Name = strings.TrimSuffix(filepath.Base(path), ".md")
-	}
-	sk.Path = path
-	return sk, nil
-}
-
-// readBody returns the skill file content after the frontmatter.
-func readBody(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
+		return Skill{}, "", err
 	}
 
 	trimmed := bytes.TrimSpace(data)
+	fallbackName := strings.TrimSuffix(filepath.Base(path), ".md")
+
 	if !bytes.HasPrefix(trimmed, frontmatterSep) {
-		return string(trimmed), nil
+		return Skill{Name: fallbackName, Path: path}, string(trimmed), nil
 	}
 
 	rest := trimmed[len(frontmatterSep):]
 	end := bytes.Index(rest, frontmatterSep)
 	if end < 0 {
-		return string(trimmed), nil
+		return Skill{Name: fallbackName, Path: path}, string(trimmed), nil
 	}
 
-	body := rest[end+len(frontmatterSep):]
-	return strings.TrimSpace(string(body)), nil
+	var sk Skill
+	if err := yaml.Unmarshal(rest[:end], &sk); err != nil {
+		return Skill{}, "", err
+	}
+	if sk.Name == "" {
+		sk.Name = fallbackName
+	}
+	sk.Path = path
+	body := strings.TrimSpace(string(rest[end+len(frontmatterSep):]))
+	return sk, body, nil
 }

@@ -2,7 +2,6 @@ package sift
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 )
@@ -43,109 +42,6 @@ func matchRule(toolName, text string, rules []StructuredRule) *StructuredRule {
 		}
 	}
 	return nil
-}
-
-type row map[string]string
-
-var (
-	reFileLineCol = regexp.MustCompile(`^(.+?):(\d+):(\d+):\s+(.+)$`)
-	reFileLine    = regexp.MustCompile(`^(.+?):(\d+):\s+(.+)$`)
-	reFileParen   = regexp.MustCompile(`^(.+?)\((\d+)\):\s+(.+)$`)
-)
-
-func parseLinterOutput(text, detect, cwd string) []row {
-	lines := strings.Split(text, "\n")
-	var rows []row
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		r := parseLine(line, detect)
-		if r == nil {
-			continue
-		}
-
-		if cwd != "" {
-			if rel, err := deprefixPath(r["file"], cwd); err == nil {
-				r["file"] = rel
-			}
-		}
-
-		if msg, ok := r["message"]; ok {
-			runes := []rune(msg)
-			if len(runes) > 80 {
-				r["message"] = string(runes[:77]) + "..."
-			}
-		}
-
-		rows = append(rows, r)
-	}
-
-	return rows
-}
-
-func parseLine(line, detect string) row {
-	var r row
-
-	if m := reFileLineCol.FindStringSubmatch(line); m != nil {
-		r = row{"file": m[1], "line": m[2], "message": m[4]}
-		r["col"] = m[3]
-		if detect == "golangci-lint" {
-			if linter := extractLinter(m[4]); linter != "" {
-				r["linter"] = linter
-				r["message"] = trimLinter(m[4], linter)
-			}
-		}
-		return r
-	}
-
-	if m := reFileLine.FindStringSubmatch(line); m != nil {
-		r = row{"file": m[1], "line": m[2], "message": m[3]}
-		return r
-	}
-
-	if m := reFileParen.FindStringSubmatch(line); m != nil {
-		r = row{"file": m[1], "line": m[2], "message": m[3]}
-		return r
-	}
-
-	return nil
-}
-
-func extractLinter(message string) string {
-	idx := strings.LastIndex(message, " (")
-	if idx < 0 {
-		return ""
-	}
-	candidate := message[idx+2:]
-	close := strings.Index(candidate, ")")
-	if close < 0 {
-		return ""
-	}
-	name := candidate[:close]
-	if strings.Contains(name, " ") {
-		return ""
-	}
-	return name
-}
-
-func trimLinter(message, linter string) string {
-	suffix := " (" + linter + ")"
-	return strings.TrimSuffix(message, suffix)
-}
-
-func deprefixPath(path, prefix string) (string, error) {
-	if !strings.HasPrefix(prefix, "/") {
-		return path, fmt.Errorf("prefix not absolute")
-	}
-	clean := strings.TrimRight(prefix, "/") + "/"
-	if strings.HasPrefix(path, clean) {
-		return strings.TrimPrefix(path, clean), nil
-	}
-	return path, fmt.Errorf("no prefix match")
 }
 
 func sortRows(rows []row, columns []string, sortBy string) {

@@ -14,13 +14,16 @@ import (
 //go:embed defaults/prompt.md
 var defaultPrompt string
 
-const pipelinesDir = "pipelines"
+const (
+	Version      = "0.2.0"
+	pipelinesDir = "pipelines"
+)
 
 // configDir is set during OnInit and used by tool/command handlers.
 var configDir string
 
 // Register registers the pipeline extension's tools and commands.
-func Register(e *sdk.Extension, version string) {
+func Register(e *sdk.Extension) {
 	e.OnInit(func(ext *sdk.Extension) {
 		home, err := xdg.ConfigDir()
 		if err != nil {
@@ -92,14 +95,14 @@ func Register(e *sdk.Extension, version string) {
 		},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
 			if configDir == "" {
-				return sdk.TextResult(fmt.Sprintf("pipeline v%s\nState: not initialized", version)), nil
+				return sdk.TextResult(fmt.Sprintf("pipeline v%s\nState: not initialized", Version)), nil
 			}
 			dir := filepath.Join(configDir, pipelinesDir)
 			pipes, err := LoadDir(dir)
 			if err != nil {
-				return sdk.TextResult(fmt.Sprintf("pipeline v%s\nDir: %s\nError: %s", version, dir, err)), nil
+				return sdk.TextResult(fmt.Sprintf("pipeline v%s\nDir: %s\nError: %s", Version, dir, err)), nil
 			}
-			return sdk.TextResult(fmt.Sprintf("pipeline v%s\nDir: %s\nPipelines: %d", version, dir, len(pipes))), nil
+			return sdk.TextResult(fmt.Sprintf("pipeline v%s\nDir: %s\nPipelines: %d", Version, dir, len(pipes))), nil
 		},
 	})
 

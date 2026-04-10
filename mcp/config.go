@@ -15,6 +15,8 @@ import (
 //go:embed defaults/mcp.yaml
 var defaultConfigYAML string
 
+const Version = "0.2.0"
+
 // ServerConfig describes a single MCP server connection.
 type ServerConfig struct {
 	Type    string            `yaml:"type,omitempty"`    // "stdio" (default) or "http"

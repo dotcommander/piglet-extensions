@@ -1,0 +1,26 @@
+import { piglet } from "@piglet/sdk";
+
+piglet.setInfo("{{NAME}}", "0.1.0");
+
+piglet.registerTool({
+  name: "{{NAME}}_hello",
+  description: "A greeting tool",
+  parameters: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Name to greet" },
+    },
+    required: ["name"],
+  },
+  execute: async (args) => {
+    return { text: "Hello, " + args.name + "!" };
+  },
+});
+
+piglet.registerCommand({
+  name: "{{NAME}}",
+  description: "Run {{NAME}}",
+  handler: async (args) => {
+    piglet.notify("{{NAME}}: " + (args || "no args"));
+  },
+});

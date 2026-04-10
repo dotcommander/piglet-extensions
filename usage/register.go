@@ -8,11 +8,13 @@ import (
 	"github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.2.0"
+
 // stats holds the session-wide usage statistics.
 var stats *SessionStats
 
 // Register registers the usage extension's event handler, command, and tool.
-func Register(e *sdk.Extension, version string) {
+func Register(e *sdk.Extension) {
 	stats = NewSessionStats()
 
 	e.OnInitAppend(func(x *sdk.Extension) {
@@ -62,7 +64,7 @@ func Register(e *sdk.Extension, version string) {
 			"properties": map[string]any{},
 		},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
-			return sdk.TextResult(fmt.Sprintf("usage v%s\nTurns: %d", version, stats.TurnCount())), nil
+			return sdk.TextResult(fmt.Sprintf("usage v%s\nTurns: %d", Version, stats.TurnCount())), nil
 		},
 	})
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("scaffold", "0.1.0")
+	e := sdk.New("scaffold", scaffold.Version)
 	scaffold.Register(e)
 	e.Run()
 }

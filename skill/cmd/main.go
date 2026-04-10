@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("skill", "0.2.0")
-	skill.Register(e, "0.2.0")
+	e := sdk.New("skill", skill.Version)
+	skill.Register(e)
 	e.Run()
 }

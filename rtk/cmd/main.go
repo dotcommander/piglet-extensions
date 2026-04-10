@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("rtk", "0.1.0")
+	e := sdk.New("rtk", rtk.Version)
 	rtk.Register(e)
 	e.Run()
 }

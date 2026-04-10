@@ -8,6 +8,9 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+// Version is the coordinator extension version.
+const Version = "0.1.0"
+
 // Register registers the coordinator extension.
 func Register(e *sdk.Extension) {
 	e.OnInitAppend(func(x *sdk.Extension) {

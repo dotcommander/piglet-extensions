@@ -7,6 +7,8 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.2.0"
+
 // planState holds mutable state shared across tool and command handlers.
 type planState struct {
 	store *Store
@@ -15,7 +17,7 @@ type planState struct {
 }
 
 // Register wires the plan extension into a shared SDK extension.
-func Register(e *sdk.Extension, version string) {
+func Register(e *sdk.Extension) {
 	s := &planState{}
 
 	e.OnInit(func(x *sdk.Extension) {
@@ -101,18 +103,18 @@ func Register(e *sdk.Extension, version string) {
 		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
 			if s.store == nil {
-				return sdk.TextResult(fmt.Sprintf("plan v%s\n  State: not initialized", version)), nil
+				return sdk.TextResult(fmt.Sprintf("plan v%s\n  State: not initialized", Version)), nil
 			}
 			p, _ := s.store.Active()
 			if p == nil {
-				return sdk.TextResult(fmt.Sprintf("plan v%s\n  State: no active plan", version)), nil
+				return sdk.TextResult(fmt.Sprintf("plan v%s\n  State: no active plan", Version)), nil
 			}
 			mode := p.Mode
 			if mode == "" {
 				mode = ModeExecute
 			}
 			done, total := p.Progress()
-			return sdk.TextResult(fmt.Sprintf("plan v%s\n  State: active\n  Mode: %s\n  Steps: %d/%d done\n  Checkpoints: %v", version, mode, done, total, p.GitEnabled)), nil
+			return sdk.TextResult(fmt.Sprintf("plan v%s\n  State: active\n  Mode: %s\n  Steps: %d/%d done\n  Checkpoints: %v", Version, mode, done, total, p.GitEnabled)), nil
 		},
 	})
 

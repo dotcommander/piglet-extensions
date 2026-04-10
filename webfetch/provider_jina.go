@@ -2,14 +2,11 @@ package webfetch
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 // JinaProvider implements FetchProvider and SearchProvider using Jina AI readers.
@@ -32,7 +29,7 @@ func NewJinaProviderWithBase(readerBase, searchBase string, apiKey string) *Jina
 		searchBase: searchBase,
 		apiKey:     apiKey,
 		http: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: fetchTimeout,
 		},
 	}
 }
@@ -55,34 +52,18 @@ func (j *JinaProvider) Fetch(ctx context.Context, rawURL string) (string, error)
 		req.Header.Set("Authorization", "Bearer "+j.apiKey)
 	}
 
-	resp, err := j.http.Do(req)
+	data, err := doRequest(j.http, req)
 	if err != nil {
-		return "", &HTTPError{URL: fetchURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return "", &HTTPError{URL: fetchURL, StatusCode: resp.StatusCode}
+		return "", err
 	}
 
-	limited := io.LimitReader(resp.Body, maxBodyBytes+1)
-	data, err := io.ReadAll(limited)
-	if err != nil {
-		return "", fmt.Errorf("read body: %w", err)
-	}
-
-	content := string(data)
-	if len(data) > maxBodyBytes {
-		content = content[:maxBodyBytes] + "\n\n[Content truncated at 100KB]"
-	}
-
-	return content, nil
+	return truncateBody(string(data)), nil
 }
 
 // Search queries the Jina search endpoint.
 func (j *JinaProvider) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
 	if limit <= 0 {
-		limit = 5
+		limit = defaultSearchLimit
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
@@ -100,19 +81,9 @@ func (j *JinaProvider) Search(ctx context.Context, query string, limit int) ([]S
 		req.Header.Set("Authorization", "Bearer "+j.apiKey)
 	}
 
-	resp, err := j.http.Do(req)
-	if err != nil {
-		return nil, &HTTPError{URL: searchURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, &HTTPError{URL: searchURL, StatusCode: resp.StatusCode}
-	}
-
 	var envelope jinaSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+	if err := doJSONRequest(j.http, req, &envelope); err != nil {
+		return nil, err
 	}
 
 	items := envelope.Data

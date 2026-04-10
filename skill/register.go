@@ -10,74 +10,58 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
-var store *Store
+const Version = "0.2.0"
 
-// Register registers the skill extension's tools, command, message hook,
-// and schedules OnInit work via OnInitAppend.
-func Register(e *sdk.Extension, version string) {
-	e.OnInitAppend(func(x *sdk.Extension) {
+// Register wires all skill capabilities into the extension.
+func Register(e *sdk.Extension) {
+	store := new(*Store)
+
+	e.OnInit(func(x *sdk.Extension) {
 		base, err := xdg.ConfigDir()
 		if err != nil {
 			return
 		}
-		store = NewStore(filepath.Join(base, "skills"))
-		if len(store.List()) == 0 {
-			store = nil
+		s := NewStore(filepath.Join(base, "skills"))
+		if len(s.List()) == 0 {
 			return
 		}
+		*store = s
 
-		// Prompt section listing available skills
-		var b strings.Builder
-		b.WriteString("Available skills (call skill_load to use):\n")
-		for _, sk := range store.List() {
-			b.WriteString("- ")
-			b.WriteString(sk.Name)
-			if sk.Description != "" {
-				b.WriteString(": ")
-				b.WriteString(sk.Description)
-			}
-			b.WriteByte('\n')
-		}
-		e.RegisterPromptSection(sdk.PromptSectionDef{
+		x.RegisterPromptSection(sdk.PromptSectionDef{
 			Title:   "Skills",
-			Content: b.String(),
+			Content: "Available skills (call skill_load to use):\n" + FormatList(s.List(), FormatOpts{Indent: "- ", Separator: ": "}),
 			Order:   25,
 		})
 	})
 
-	// Tools
-	e.RegisterTool(sdk.ToolDef{
+	e.RegisterTool(toolList(store))
+	e.RegisterTool(toolLoad(store))
+	e.RegisterTool(toolStatus(store))
+	e.RegisterCommand(skillCommand(store, e))
+	e.RegisterMessageHook(skillTrigger(store))
+}
+
+func toolList(store **Store) sdk.ToolDef {
+	return sdk.ToolDef{
 		Name:        "skill_list",
 		Description: "List available skills with descriptions and trigger keywords.",
 		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
-			if store == nil {
+			s := *store
+			if s == nil {
 				return sdk.TextResult("No skills available."), nil
 			}
-			skills := store.List()
+			skills := s.List()
 			if len(skills) == 0 {
 				return sdk.TextResult("No skills available."), nil
 			}
-			var b strings.Builder
-			for _, sk := range skills {
-				b.WriteString("- ")
-				b.WriteString(sk.Name)
-				if sk.Description != "" {
-					b.WriteString(": ")
-					b.WriteString(sk.Description)
-				}
-				if len(sk.Triggers) > 0 {
-					b.WriteString(" (triggers: ")
-					b.WriteString(strings.Join(sk.Triggers, ", "))
-					b.WriteByte(')')
-				}
-				b.WriteByte('\n')
-			}
-			return sdk.TextResult(b.String()), nil
+			return sdk.TextResult(FormatList(skills, FormatOpts{Indent: "- ", Separator: ": ", Triggers: true})), nil
 		},
-	})
+	}
+}
 
-	e.RegisterTool(sdk.ToolDef{
+func toolLoad(store **Store) sdk.ToolDef {
+	return sdk.ToolDef{
 		Name:        "skill_load",
 		Description: "Load a skill's full methodology and instructions by name.",
 		Parameters: map[string]any{
@@ -88,65 +72,60 @@ func Register(e *sdk.Extension, version string) {
 			"required": []string{"name"},
 		},
 		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			if store == nil {
+			s := *store
+			if s == nil {
 				return sdk.ErrorResult("no skills available"), nil
 			}
 			name, _ := args["name"].(string)
 			if name == "" {
 				return sdk.ErrorResult("name is required"), nil
 			}
-			content, err := store.Load(name)
+			content, err := s.Load(name)
 			if err != nil {
 				return sdk.ErrorResult(fmt.Sprintf("skill %q not found", name)), nil
 			}
 			return sdk.TextResult(content), nil
 		},
-	})
+	}
+}
 
-	e.RegisterTool(sdk.ToolDef{
+func toolStatus(store **Store) sdk.ToolDef {
+	return sdk.ToolDef{
 		Name:        "skill_status",
 		Description: "Show skill extension status: version, skill count, and skills directory path.",
 		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
-			if store == nil {
-				return sdk.TextResult(fmt.Sprintf("skill v%s\nNo skills loaded.", version)), nil
+			s := *store
+			if s == nil {
+				return sdk.TextResult(fmt.Sprintf("skill v%s\nNo skills loaded.", Version)), nil
 			}
-			skills := store.List()
-			return sdk.TextResult(fmt.Sprintf("skill v%s\nSkills: %d loaded\nDirectory: %s", version, len(skills), store.Dir())), nil
+			skills := s.List()
+			return sdk.TextResult(fmt.Sprintf("skill v%s\nSkills: %d loaded\nDirectory: %s", Version, len(skills), s.Dir())), nil
 		},
-	})
+	}
+}
 
-	// Command
-	e.RegisterCommand(sdk.CommandDef{
+func skillCommand(store **Store, e *sdk.Extension) sdk.CommandDef {
+	return sdk.CommandDef{
 		Name:        "skill",
 		Description: "List or load a skill",
 		Handler: func(_ context.Context, args string) error {
-			if store == nil {
+			s := *store
+			if s == nil {
 				e.ShowMessage("No skills available.")
 				return nil
 			}
 			arg := strings.TrimSpace(args)
 			if arg == "" || arg == "list" {
-				skills := store.List()
+				skills := s.List()
 				if len(skills) == 0 {
-					e.ShowMessage("No skills found in " + store.Dir())
+					e.ShowMessage("No skills found in " + s.Dir())
 					return nil
 				}
-				var b strings.Builder
-				b.WriteString("Available skills:\n")
-				for _, sk := range skills {
-					b.WriteString("  ")
-					b.WriteString(sk.Name)
-					if sk.Description != "" {
-						b.WriteString(" — ")
-						b.WriteString(sk.Description)
-					}
-					b.WriteByte('\n')
-				}
-				e.ShowMessage(b.String())
+				e.ShowMessage(FormatList(skills, FormatOpts{Prefix: "Available skills:\n", Indent: "  ", Separator: " — "}))
 				return nil
 			}
-			content, err := store.Load(arg)
+			content, err := s.Load(arg)
 			if err != nil {
 				e.ShowMessage(fmt.Sprintf("Skill %q not found. Run /skill list to see available skills.", arg))
 				return nil
@@ -154,25 +133,27 @@ func Register(e *sdk.Extension, version string) {
 			e.ShowMessage(fmt.Sprintf("# Skill: %s\n\n%s", arg, content))
 			return nil
 		},
-	})
+	}
+}
 
-	// Message hook for auto-triggering skills
-	e.RegisterMessageHook(sdk.MessageHookDef{
+func skillTrigger(store **Store) sdk.MessageHookDef {
+	return sdk.MessageHookDef{
 		Name:     "skill-trigger",
 		Priority: 500,
 		OnMessage: func(_ context.Context, msg string) (string, error) {
-			if store == nil {
+			s := *store
+			if s == nil {
 				return "", nil
 			}
-			matches := store.Match(msg)
+			matches := s.Match(msg)
 			if len(matches) == 0 {
 				return "", nil
 			}
-			content, err := store.Load(matches[0].Name)
+			content, err := s.Load(matches[0].Name)
 			if err != nil {
 				return "", nil
 			}
 			return "# Skill: " + matches[0].Name + "\n\n" + content, nil
 		},
-	})
+	}
 }

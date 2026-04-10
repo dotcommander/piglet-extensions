@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("undo", "0.1.0")
+	e := sdk.New("undo", undo.Version)
 	undo.Register(e)
 	e.Run()
 }

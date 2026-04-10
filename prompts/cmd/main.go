@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("prompts", "0.1.0")
+	e := sdk.New("prompts", prompts.Version)
 	prompts.Register(e)
 	e.Run()
 }

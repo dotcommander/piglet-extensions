@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("route", "0.2.0")
-	route.Register(e, "0.2.0")
+	e := sdk.New("route", route.Version)
+	route.Register(e)
 	e.Run()
 }

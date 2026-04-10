@@ -2,6 +2,8 @@ package usage
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -16,11 +18,11 @@ type TokenUsage struct {
 
 // ComponentBreakdown shows token usage per prompt component.
 type ComponentBreakdown struct {
-	SystemPrompt int                `json:"system_prompt"`
-	Extensions   []ExtensionTokens  `json:"extensions"`
-	RepoMap      int                `json:"repo_map"`
-	Tools        int                `json:"tools"`
-	History      int                `json:"history"`
+	SystemPrompt int               `json:"system_prompt"`
+	Extensions   []ExtensionTokens `json:"extensions"`
+	RepoMap      int               `json:"repo_map"`
+	Tools        int               `json:"tools"`
+	History      int               `json:"history"`
 }
 
 // ExtensionTokens is token usage for a single extension's prompt section.
@@ -146,52 +148,23 @@ func formatRightAlign(label string, value int) string {
 	if padding < 1 {
 		padding = 1
 	}
-	return label + repeat(" ", padding) + num
+	return label + strings.Repeat(" ", padding) + num
 }
 
 func formatNumber(n int) string {
-	if n >= 1000000 {
-		return formatWithCommas(n)
-	}
-	if n >= 1000 {
-		return formatWithCommas(n)
-	}
-	return intToStr(n)
-}
-
-func formatWithCommas(n int) string {
-	s := intToStr(n)
-	result := s
-	if len(s) > 3 {
-		result = s[:len(s)-3] + "," + s[len(s)-3:]
-	}
-	return result
-}
-
-func intToStr(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var neg bool
 	if n < 0 {
-		neg = true
-		n = -n
+		return "-" + formatNumber(-n)
 	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
+	s := strconv.Itoa(n)
+	if len(s) <= 3 {
+		return s
 	}
-	if neg {
-		b = append([]byte{'-'}, b...)
+	var b strings.Builder
+	for i, ch := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(ch)
 	}
-	return string(b)
-}
-
-func repeat(s string, n int) string {
-	result := make([]byte, 0, len(s)*n)
-	for i := 0; i < n; i++ {
-		result = append(result, s...)
-	}
-	return string(result)
+	return b.String()
 }

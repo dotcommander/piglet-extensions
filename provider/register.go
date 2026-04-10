@@ -10,6 +10,8 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.1.0"
+
 // Register adds provider registrations and the stream handler to the extension.
 // RegisterProvider sends notifications immediately, so calls are deferred to
 // OnInitAppend to ensure the RPC pipe (FD 4) is open.

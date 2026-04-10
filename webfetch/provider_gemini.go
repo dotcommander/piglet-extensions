@@ -1,17 +1,14 @@
 package webfetch
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 )
@@ -55,7 +52,7 @@ func NewGeminiProvider(apiKey string, cfg GeminiConfig) *GeminiProvider {
 		model:   cfg.Model,
 		apiKey:  apiKey,
 		http: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: fetchTimeout,
 		},
 	}
 }
@@ -99,40 +96,13 @@ func (g *GeminiProvider) Fetch(ctx context.Context, rawURL string) (string, erro
 
 	reqBody := geminiRequest{
 		Contents: []geminiContent{
-			{
-				Parts: []geminiPart{
-					{
-						Text: fmt.Sprintf(activeGeminiFetchPrompt, rawURL),
-					},
-				},
-			},
+			{Parts: []geminiPart{{Text: fmt.Sprintf(activeGeminiFetchPrompt, rawURL)}}},
 		},
 	}
 
-	body, err := json.Marshal(reqBody)
+	respData, err := llmPost(g.http, apiURL, nil, reqBody)
 	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := g.http.Do(req)
-	if err != nil {
-		return "", &HTTPError{URL: apiURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	respData, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
-	if err != nil {
-		return "", fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		return "", &HTTPError{URL: apiURL, StatusCode: resp.StatusCode}
+		return "", err
 	}
 
 	var geminiResp geminiResponse
@@ -150,8 +120,6 @@ func (g *GeminiProvider) Fetch(ctx context.Context, rawURL string) (string, erro
 
 	content := geminiResp.Candidates[0].Content.Parts[0].Text
 
-	// Detect refusal responses — Gemini sometimes returns "I cannot access URLs"
-	// as a valid 200 response. Treat these as errors so the chain falls through.
 	if isLLMRefusal(content) {
 		return "", &HTTPError{
 			URL:        rawURL,
@@ -160,12 +128,8 @@ func (g *GeminiProvider) Fetch(ctx context.Context, rawURL string) (string, erro
 		}
 	}
 
-	if len(content) > maxBodyBytes {
-		content = content[:maxBodyBytes] + "\n\n[Content truncated at 100KB]"
-	}
-
 	slog.Debug("gemini fetch completed", "url", rawURL)
-	return content, nil
+	return truncateBody(content), nil
 }
 
 // Search queries Gemini for search results.
@@ -173,47 +137,20 @@ func (g *GeminiProvider) Search(ctx context.Context, query string, limit int) ([
 	loadGeminiPrompts()
 
 	if limit <= 0 {
-		limit = 5
+		limit = defaultSearchLimit
 	}
 
 	apiURL := fmt.Sprintf("%s/models/%s:generateContent?key=%s", g.apiBase, g.model, g.apiKey)
 
 	reqBody := geminiRequest{
 		Contents: []geminiContent{
-			{
-				Parts: []geminiPart{
-					{
-						Text: fmt.Sprintf(activeGeminiSearchPrompt, query, limit),
-					},
-				},
-			},
+			{Parts: []geminiPart{{Text: fmt.Sprintf(activeGeminiSearchPrompt, query, limit)}}},
 		},
 	}
 
-	body, err := json.Marshal(reqBody)
+	respData, err := llmPost(g.http, apiURL, nil, reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := g.http.Do(req)
-	if err != nil {
-		return nil, &HTTPError{URL: apiURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	respData, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		return nil, &HTTPError{URL: apiURL, StatusCode: resp.StatusCode}
+		return nil, err
 	}
 
 	var geminiResp geminiResponse
@@ -229,7 +166,6 @@ func (g *GeminiProvider) Search(ctx context.Context, query string, limit int) ([
 		return nil, fmt.Errorf("no response from gemini")
 	}
 
-	// Gemini returns text, not structured results. Parse it into SearchResult format.
 	content := geminiResp.Candidates[0].Content.Parts[0].Text
 	results := parseGeminiSearchResults(content, limit)
 

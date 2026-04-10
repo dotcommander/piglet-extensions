@@ -8,6 +8,11 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+// showErr displays an error message via the extension's ShowMessage.
+func showErr(e *sdk.Extension, err error) {
+	e.ShowMessage("Error: " + err.Error())
+}
+
 func todoCommand(sp **Store, e *sdk.Extension) func(context.Context, string) error {
 	return func(_ context.Context, args string) error {
 		s := *sp
@@ -90,7 +95,7 @@ func handleCmdAdd(s *Store, e *sdk.Extension, args string) {
 
 	t, err := s.Add(title, GroupTodo, "")
 	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
+		showErr(e, err)
 		return
 	}
 
@@ -106,13 +111,13 @@ func handleCmdDone(s *Store, e *sdk.Extension, args string) {
 
 	t, err := s.Resolve(id)
 	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
+		showErr(e, err)
 		return
 	}
 
 	changed, err := s.Done(t.ID)
 	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
+		showErr(e, err)
 		return
 	}
 
@@ -128,13 +133,13 @@ func handleCmdDelete(s *Store, e *sdk.Extension, args string) {
 
 	t, err := s.Resolve(id)
 	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
+		showErr(e, err)
 		return
 	}
 
 	deleted, err := s.Delete(t.ID)
 	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
+		showErr(e, err)
 		return
 	}
 
@@ -150,13 +155,13 @@ func handleCmdBacklog(s *Store, e *sdk.Extension, args string) {
 
 	t, err := s.Resolve(id)
 	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
+		showErr(e, err)
 		return
 	}
 
 	_, err = s.Move(t.ID, GroupBacklog, "")
 	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
+		showErr(e, err)
 		return
 	}
 
@@ -173,7 +178,7 @@ func handleCmdPlan(s *Store, e *sdk.Extension, args string) {
 	id := parts[0]
 	t, err := s.Resolve(id)
 	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
+		showErr(e, err)
 		return
 	}
 
@@ -191,7 +196,7 @@ func handleCmdPlan(s *Store, e *sdk.Extension, args string) {
 	// Append notes.
 	_, err = s.AppendNotes(t.ID, text)
 	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
+		showErr(e, err)
 		return
 	}
 

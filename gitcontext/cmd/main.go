@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("gitcontext", "0.1.0")
+	e := sdk.New("gitcontext", gitcontext.Version)
 	gitcontext.Register(e)
 	e.Run()
 }

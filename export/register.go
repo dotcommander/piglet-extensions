@@ -11,6 +11,8 @@ import (
 	"github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.1.0"
+
 // Register registers the export extension's commands.
 func Register(e *sdk.Extension) {
 	e.RegisterCommand(sdk.CommandDef{

@@ -8,69 +8,40 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
-var (
-	cwd string
-	cfg Config
-)
+const Version = "0.3.0"
 
-// Register registers the session-tools extension's commands, tools, and prompt
-// section, and schedules OnInit work via OnInitAppend.
-func Register(e *sdk.Extension, version string) {
+// Register wires all session-tools capabilities into the extension.
+func Register(e *sdk.Extension) {
+	cwd := new(string)
+	cfg := new(Config)
+
 	e.OnInitAppend(func(x *sdk.Extension) {
-
-		cwd = x.CWD()
-		cfg = LoadConfig()
-
-		content := LoadPromptContent()
-		if content != "" {
-			x.RegisterPromptSection(sdk.PromptSectionDef{
-				Title:   "Session Handoff",
-				Content: content,
-				Order:   95,
-			})
-		}
-
+		*cwd = x.CWD()
+		*cfg = LoadConfig()
+		registerPrompt(x, *cfg)
 	})
 
+	registerCommands(e, cwd, cfg)
+	registerTools(e, cwd, cfg)
+}
+
+func registerPrompt(x *sdk.Extension, cfg Config) {
+	content := LoadPromptContent()
+	if content != "" {
+		x.RegisterPromptSection(sdk.PromptSectionDef{
+			Title:   "Session Handoff",
+			Content: content,
+			Order:   95,
+		})
+	}
+}
+
+func registerCommands(e *sdk.Extension, cwd *string, cfg *Config) {
 	e.RegisterCommand(sdk.CommandDef{
 		Name:        "search",
 		Description: "Search sessions by title or directory",
 		Handler: func(ctx context.Context, args string) error {
-			query := strings.TrimSpace(args)
-			if query == "" {
-				e.ShowMessage("Usage: /search <query>")
-				return nil
-			}
-			sessions, err := e.Sessions(ctx)
-			if err != nil {
-				e.ShowMessage(err.Error())
-				return nil
-			}
-			if len(sessions) == 0 {
-				e.ShowMessage("No sessions found")
-				return nil
-			}
-
-			q := strings.ToLower(query)
-			var b strings.Builder
-			count := 0
-			for _, s := range sessions {
-				if strings.Contains(strings.ToLower(s.Title), q) || strings.Contains(strings.ToLower(s.CWD), q) {
-					label := s.Title
-					if label == "" && len(s.ID) > 8 {
-						label = s.ID[:8]
-					}
-					fmt.Fprintf(&b, "  %s — %s (%s)\n", label, s.CWD, s.CreatedAt)
-					count++
-				}
-			}
-
-			if count == 0 {
-				e.ShowMessage("No sessions matching: " + query)
-				return nil
-			}
-			e.ShowMessage(fmt.Sprintf("Search: %s (%d results)\n\n%s\nUse /session to open a specific session.", query, count, b.String()))
-			return nil
+			return cmdSearch(ctx, e, args)
 		},
 	})
 
@@ -78,13 +49,7 @@ func Register(e *sdk.Extension, version string) {
 		Name:        "branch",
 		Description: "Fork conversation into a new session",
 		Handler: func(ctx context.Context, args string) error {
-			parentID, count, err := e.ForkSession(ctx)
-			if err != nil {
-				e.ShowMessage("Branch failed: " + err.Error())
-				return nil
-			}
-			e.ShowMessage(fmt.Sprintf("Branched from %s (%d messages)", parentID, count))
-			return nil
+			return cmdBranch(ctx, e)
 		},
 	})
 
@@ -92,17 +57,7 @@ func Register(e *sdk.Extension, version string) {
 		Name:        "title",
 		Description: "Set session title",
 		Handler: func(ctx context.Context, args string) error {
-			title := strings.TrimSpace(args)
-			if title == "" {
-				e.ShowMessage("Usage: /title <title>")
-				return nil
-			}
-			if err := e.SetSessionTitle(ctx, title); err != nil {
-				e.ShowMessage("Failed to set title: " + err.Error())
-				return nil
-			}
-			e.ShowMessage("Session title: " + title)
-			return nil
+			return cmdTitle(ctx, e, args)
 		},
 	})
 
@@ -110,18 +65,19 @@ func Register(e *sdk.Extension, version string) {
 		Name:        "handoff",
 		Description: "Transfer context to a new session with structured summary",
 		Handler: func(ctx context.Context, args string) error {
-			if !cfg.Enabled {
-				e.ShowMessage("Session handoff is disabled in config.")
-				return nil
-			}
-			focus := strings.TrimSpace(args)
-			if err := Handoff(ctx, e, cwd, focus, cfg); err != nil {
+			text, err := doHandoff(ctx, e, *cwd, *cfg, strings.TrimSpace(args), "")
+			if err != nil {
 				e.ShowMessage("Handoff failed: " + err.Error())
+			}
+			if text != "" {
+				e.ShowMessage(text)
 			}
 			return nil
 		},
 	})
+}
 
+func registerTools(e *sdk.Extension, cwd *string, cfg *Config) {
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "session_query",
 		Description: "Search a session's JSONL file for content matching a keyword query. Use to recover specific details from a parent session after a handoff.",
@@ -141,19 +97,7 @@ func Register(e *sdk.Extension, version string) {
 		},
 		PromptHint: "Search a session file for specific content by keyword",
 		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			path, _ := args["session_path"].(string)
-			query, _ := args["query"].(string)
-
-			if path == "" || query == "" {
-				return sdk.ErrorResult("session_path and query are required"), nil
-			}
-
-			result, err := QuerySession(path, query, cfg.MaxQuerySize)
-			if err != nil {
-				return sdk.ErrorResult(err.Error()), nil
-			}
-
-			return sdk.TextResult(result), nil
+			return toolSessionQuery(args, *cfg)
 		},
 	})
 
@@ -175,33 +119,130 @@ func Register(e *sdk.Extension, version string) {
 		},
 		PromptHint: "Fork the session with a structured handoff summary",
 		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			if !cfg.Enabled {
-				return sdk.ErrorResult("session handoff is disabled in config"), nil
-			}
-
-			focus, _ := args["focus"].(string)
-			reason, _ := args["reason"].(string)
-			if reason != "" && focus != "" {
-				focus = focus + " (" + reason + ")"
-			} else if reason != "" {
-				focus = reason
-			}
-
-			if err := Handoff(ctx, e, cwd, focus, cfg); err != nil {
-				return sdk.ErrorResult("handoff failed: " + err.Error()), nil
-			}
-
-			return sdk.TextResult("Handoff complete. Context transferred to new session."), nil
+			return toolHandoff(ctx, e, *cwd, *cfg, args)
 		},
 	})
 
-	// Status tool
 	e.RegisterTool(sdk.ToolDef{
 		Name:        "session_status",
 		Description: "Show session-tools extension status: version and working directory.",
 		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
-			return sdk.TextResult(fmt.Sprintf("session-tools %s\n  CWD: %s\n", version, cwd)), nil
+			return toolStatus(*cwd)
 		},
 	})
+}
+
+// doHandoff executes a handoff if enabled, returning a user-facing message and any error.
+func doHandoff(ctx context.Context, e *sdk.Extension, cwd string, cfg Config, focus, reason string) (string, error) {
+	if !cfg.Enabled {
+		return "", fmt.Errorf("session handoff is disabled in config")
+	}
+	if reason != "" && focus != "" {
+		focus = focus + " (" + reason + ")"
+	} else if reason != "" {
+		focus = reason
+	}
+	if err := Handoff(ctx, e, cwd, focus, cfg); err != nil {
+		return "", err
+	}
+	return "Handoff complete. Context transferred to new session.", nil
+}
+
+// --- Command handlers ---
+
+func cmdSearch(_ context.Context, e *sdk.Extension, args string) error {
+	query := strings.TrimSpace(args)
+	if query == "" {
+		e.ShowMessage("Usage: /search <query>")
+		return nil
+	}
+
+	sessions, err := e.Sessions(context.Background())
+	if err != nil {
+		e.ShowMessage(err.Error())
+		return nil
+	}
+	if len(sessions) == 0 {
+		e.ShowMessage("No sessions found")
+		return nil
+	}
+
+	q := strings.ToLower(query)
+	var b strings.Builder
+	count := 0
+	for _, s := range sessions {
+		if strings.Contains(strings.ToLower(s.Title), q) || strings.Contains(strings.ToLower(s.CWD), q) {
+			label := s.Title
+			if label == "" && len(s.ID) > 8 {
+				label = s.ID[:8]
+			}
+			fmt.Fprintf(&b, "  %s — %s (%s)\n", label, s.CWD, s.CreatedAt)
+			count++
+		}
+	}
+
+	if count == 0 {
+		e.ShowMessage("No sessions matching: " + query)
+		return nil
+	}
+	e.ShowMessage(fmt.Sprintf("Search: %s (%d results)\n\n%s\nUse /session to open a specific session.", query, count, b.String()))
+	return nil
+}
+
+func cmdBranch(ctx context.Context, e *sdk.Extension) error {
+	parentID, count, err := e.ForkSession(ctx)
+	if err != nil {
+		e.ShowMessage("Branch failed: " + err.Error())
+		return nil
+	}
+	e.ShowMessage(fmt.Sprintf("Branched from %s (%d messages)", parentID, count))
+	return nil
+}
+
+func cmdTitle(ctx context.Context, e *sdk.Extension, args string) error {
+	title := strings.TrimSpace(args)
+	if title == "" {
+		e.ShowMessage("Usage: /title <title>")
+		return nil
+	}
+	if err := e.SetSessionTitle(ctx, title); err != nil {
+		e.ShowMessage("Failed to set title: " + err.Error())
+		return nil
+	}
+	e.ShowMessage("Session title: " + title)
+	return nil
+}
+
+// --- Tool handlers ---
+
+func toolSessionQuery(args map[string]any, cfg Config) (*sdk.ToolResult, error) {
+	path, _ := args["session_path"].(string)
+	query, _ := args["query"].(string)
+
+	if path == "" || query == "" {
+		return sdk.ErrorResult("session_path and query are required"), nil
+	}
+
+	result, err := QuerySession(path, query, cfg.MaxQuerySize)
+	if err != nil {
+		return sdk.ErrorResult(err.Error()), nil
+	}
+
+	return sdk.TextResult(result), nil
+}
+
+func toolHandoff(ctx context.Context, e *sdk.Extension, cwd string, cfg Config, args map[string]any) (*sdk.ToolResult, error) {
+	focus, _ := args["focus"].(string)
+	reason, _ := args["reason"].(string)
+
+	text, err := doHandoff(ctx, e, cwd, cfg, focus, reason)
+	if err != nil {
+		return sdk.ErrorResult("handoff failed: " + err.Error()), nil
+	}
+	return sdk.TextResult(text), nil
+}
+
+func toolStatus(cwd string) (*sdk.ToolResult, error) {
+	return sdk.TextResult(fmt.Sprintf("session-tools %s\n  CWD: %s\n", Version, cwd)), nil
 }

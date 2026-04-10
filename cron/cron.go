@@ -17,6 +17,13 @@ type RunOptions struct {
 	Force    bool   // bypass schedule check
 }
 
+// taskRun holds a task that has been selected for execution.
+type taskRun struct {
+	name   string
+	config TaskConfig
+	sched  Schedule
+}
+
 // taskResult carries the outcome of a single task execution.
 type taskResult struct {
 	name   string
@@ -37,17 +44,23 @@ func Run(ctx context.Context, opts RunOptions) error {
 	entries, err := ReadHistory()
 	if err != nil {
 		slog.Warn("reading history", "error", err)
-		// Continue with empty history — all tasks will appear as first run.
 	}
 
-	type taskRun struct {
-		name   string
-		config TaskConfig
-		sched  Schedule
+	toRun := collectDueTasks(cfg, entries, opts)
+	if len(toRun) == 0 {
+		if opts.Verbose {
+			slog.Info("no tasks due")
+		}
+		return nil
 	}
 
+	collected := executeTasks(ctx, toRun, opts.Verbose)
+	return recordResults(collected, opts.Verbose)
+}
+
+// collectDueTasks filters configured tasks to those that are due.
+func collectDueTasks(cfg Config, entries []RunEntry, opts RunOptions) []taskRun {
 	var toRun []taskRun
-
 	for name, task := range cfg.Tasks {
 		if !task.IsEnabled() {
 			if opts.Verbose {
@@ -55,8 +68,6 @@ func Run(ctx context.Context, opts RunOptions) error {
 			}
 			continue
 		}
-
-		// If targeting a specific task, skip others.
 		if opts.TaskName != "" && opts.TaskName != name {
 			continue
 		}
@@ -80,15 +91,11 @@ func Run(ctx context.Context, opts RunOptions) error {
 			slog.Info("not due", "task", name, "next", next.Format(time.RFC3339))
 		}
 	}
+	return toRun
+}
 
-	if len(toRun) == 0 {
-		if opts.Verbose {
-			slog.Info("no tasks due")
-		}
-		return nil
-	}
-
-	// Execute due tasks in parallel — all run to completion regardless of failures.
+// executeTasks runs all due tasks in parallel, collecting results.
+func executeTasks(ctx context.Context, toRun []taskRun, verbose bool) []taskResult {
 	var mu sync.Mutex
 	collected := make([]taskResult, 0, len(toRun))
 
@@ -106,7 +113,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 				}
 			}()
 
-			if opts.Verbose {
+			if verbose {
 				slog.Info("running", "task", tr.name, "action", tr.config.Action)
 			}
 
@@ -114,13 +121,17 @@ func Run(ctx context.Context, opts RunOptions) error {
 			mu.Lock()
 			collected = append(collected, taskResult{name: tr.name, result: res})
 			mu.Unlock()
-			return nil // never cancel siblings on task failure
+			return nil
 		})
 	}
 	eg.Wait() //nolint:errcheck // always nil — goroutines never return non-nil
+	return collected
+}
 
+// recordResults appends results to history and rotates if needed.
+func recordResults(results []taskResult, verbose bool) error {
 	var appendErr error
-	for _, r := range collected {
+	for _, r := range results {
 		entry := RunEntry{
 			Task:       r.name,
 			RanAt:      nowFunc().Format(time.RFC3339),
@@ -129,7 +140,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 			Error:      r.result.Error,
 		}
 
-		if opts.Verbose {
+		if verbose {
 			if r.result.Success {
 				slog.Info("completed", "task", r.name, "duration_ms", r.result.DurationMs)
 			} else {
@@ -143,11 +154,9 @@ func Run(ctx context.Context, opts RunOptions) error {
 		}
 	}
 
-	// Rotate history if needed.
 	if err := RotateHistory(); err != nil {
 		slog.Warn("rotating history", "error", err)
 	}
-
 	return appendErr
 }
 

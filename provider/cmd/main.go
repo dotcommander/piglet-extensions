@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("provider", "0.1.0")
+	e := sdk.New("provider", provider.Version)
 	provider.Register(e)
 	e.Run()
 }

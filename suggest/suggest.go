@@ -10,21 +10,24 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+// contentBlock represents a typed content block with optional text.
+type contentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
 // TurnData represents the relevant data from an EventTurnEnd, parsed from JSON.
 type TurnData struct {
-	Assistant   json.RawMessage   `json:"Assistant"`
-	ToolResults []ToolResult      `json:"ToolResults"`
+	Assistant   json.RawMessage `json:"Assistant"`
+	ToolResults []ToolResult    `json:"ToolResults"`
 }
 
 // ToolResult represents a tool result from the turn.
 type ToolResult struct {
-	ToolName   string `json:"tool_name"`
-	ToolCallID string `json:"tool_call_id"`
-	IsError    bool   `json:"is_error"`
-	Content    []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
+	ToolName   string         `json:"tool_name"`
+	ToolCallID string         `json:"tool_call_id"`
+	IsError    bool           `json:"is_error"`
+	Content    []contentBlock `json:"content"`
 }
 
 // blockedPatterns are generic suggestions that should be filtered out.
@@ -41,8 +44,14 @@ var blockedPatterns = []string{
 	"what else",
 	"anything else",
 	"?",
-	"...",
 }
+
+const (
+	maxAssistantRunes  = 500 // truncate assistant text sent as context
+	maxSuggestionRunes = 80  // truncate final suggestion output
+	shortSuggestLen    = 20  // threshold for pattern-blocking generic suggestions
+	maxSeenSuggestions = 100 // eviction threshold for dedup map
+)
 
 // Suggester generates next-prompt suggestions based on conversation context.
 type Suggester struct {
@@ -89,15 +98,6 @@ func (s *Suggester) ResetCooldown() {
 	s.cooldown = s.config.Cooldown
 }
 
-// IncrementTurn increments the turn counter (called on each turn even if not suggesting).
-func (s *Suggester) IncrementTurn() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.cooldown > 0 {
-		s.cooldown--
-	}
-}
-
 // Generate creates a suggestion based on turn data and project context.
 func (s *Suggester) Generate(ctx context.Context, turn TurnData, projCtx ProjectContext) (string, error) {
 	// Build context for LLM
@@ -129,7 +129,7 @@ func (s *Suggester) Generate(ctx context.Context, turn TurnData, projCtx Project
 	assistantText := extractAssistantText(turn.Assistant)
 	if assistantText != "" {
 		contextBuilder.WriteString("\nAssistant's last response:\n")
-		contextBuilder.WriteString(truncate(assistantText, 500))
+		contextBuilder.WriteString(truncate(assistantText, maxAssistantRunes))
 	}
 
 	// Call LLM
@@ -151,13 +151,13 @@ func (s *Suggester) Generate(ctx context.Context, turn TurnData, projCtx Project
 func (s *Suggester) filter(suggestion string) string {
 	suggestion = strings.TrimSpace(suggestion)
 
-	// Truncate to 80 chars
-	suggestion = truncate(suggestion, 80)
+	// Truncate to max suggestion length
+	suggestion = truncate(suggestion, maxSuggestionRunes)
 
 	// Block generic patterns
 	lower := strings.ToLower(suggestion)
 	for _, pattern := range blockedPatterns {
-		if strings.Contains(lower, pattern) && len(suggestion) < 20 {
+		if strings.Contains(lower, pattern) && len(suggestion) < shortSuggestLen {
 			return ""
 		}
 	}
@@ -172,7 +172,7 @@ func (s *Suggester) filter(suggestion string) string {
 	}
 
 	// Track seen suggestions (keep last 100)
-	if len(s.seen) > 100 {
+	if len(s.seen) > maxSeenSuggestions {
 		// Reset seen map to prevent unbounded growth
 		s.seen = make(map[string]struct{})
 	}
@@ -181,38 +181,31 @@ func (s *Suggester) filter(suggestion string) string {
 	return suggestion
 }
 
+// extractTextBlocks joins text from content blocks of type "text".
+func extractTextBlocks(blocks []contentBlock) string {
+	var texts []string
+	for _, b := range blocks {
+		if b.Type == "text" && b.Text != "" {
+			texts = append(texts, b.Text)
+		}
+	}
+	return strings.Join(texts, "\n")
+}
+
 // extractAssistantText extracts text content from an assistant message.
 func extractAssistantText(raw json.RawMessage) string {
-	// Try to parse as content array
-	var contentArray []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if err := json.Unmarshal(raw, &contentArray); err == nil {
-		var texts []string
-		for _, c := range contentArray {
-			if c.Type == "text" && c.Text != "" {
-				texts = append(texts, c.Text)
-			}
-		}
-		return strings.Join(texts, "\n")
+	// Try content array: [{"type":"text","text":"..."}]
+	var blocks []contentBlock
+	if err := json.Unmarshal(raw, &blocks); err == nil && len(blocks) > 0 {
+		return extractTextBlocks(blocks)
 	}
 
-	// Try to parse as struct with content field
+	// Try message object: {"content":[{"type":"text","text":"..."}]}
 	var msg struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
+		Content []contentBlock `json:"content"`
 	}
-	if err := json.Unmarshal(raw, &msg); err == nil {
-		var texts []string
-		for _, c := range msg.Content {
-			if c.Type == "text" && c.Text != "" {
-				texts = append(texts, c.Text)
-			}
-		}
-		return strings.Join(texts, "\n")
+	if err := json.Unmarshal(raw, &msg); err == nil && len(msg.Content) > 0 {
+		return extractTextBlocks(msg.Content)
 	}
 
 	// Try raw string

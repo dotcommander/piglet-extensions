@@ -10,6 +10,16 @@ import (
 	"time"
 )
 
+const maxOutput = 4096
+
+// truncateOutput caps output to maxOutput bytes.
+func truncateOutput(s string) string {
+	if len(s) <= maxOutput {
+		return s
+	}
+	return s[:maxOutput] + "...(truncated)"
+}
+
 // ExecuteResult holds the outcome of a task execution.
 type ExecuteResult struct {
 	Success    bool
@@ -66,12 +76,7 @@ func executeShell(ctx context.Context, task TaskConfig) ExecuteResult {
 	cmd.Stderr = &buf
 
 	err := cmd.Run()
-	output := buf.String()
-	// Truncate output to 4KB for history storage.
-	const maxOutput = 4096
-	if len(output) > maxOutput {
-		output = output[:maxOutput] + "...(truncated)"
-	}
+	output := truncateOutput(buf.String())
 
 	if err != nil {
 		return ExecuteResult{Error: err.Error(), Output: output}
@@ -92,11 +97,7 @@ func executePrompt(ctx context.Context, task TaskConfig) ExecuteResult {
 	cmd.Stderr = &buf
 
 	err := cmd.Run()
-	output := buf.String()
-	const maxOutput = 4096
-	if len(output) > maxOutput {
-		output = output[:maxOutput] + "...(truncated)"
-	}
+	output := truncateOutput(buf.String())
 
 	if err != nil {
 		return ExecuteResult{Error: err.Error(), Output: output}

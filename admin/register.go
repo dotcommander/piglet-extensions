@@ -13,6 +13,9 @@ import (
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 )
 
+// Version is the admin extension version.
+const Version = "0.3.0"
+
 // configFile is a config file entry for display.
 type configFile struct {
 	label, path string
@@ -145,7 +148,7 @@ func configDir(e messenger) (string, bool) {
 }
 
 // Register registers all admin extension capabilities.
-func Register(e *sdk.Extension, version string) {
+func Register(e *sdk.Extension) {
 	// Tools for LLM access
 	e.RegisterTool(toolConfigList())
 	e.RegisterTool(toolConfigRead())
@@ -154,7 +157,7 @@ func Register(e *sdk.Extension, version string) {
 	e.RegisterCommand(sdk.CommandDef{
 		Name:        "config",
 		Description: "Inspect and manage piglet configuration",
-		Handler:     configCommand(version, e),
+		Handler:     configCommand(e),
 	})
 
 	// Status tool
@@ -167,7 +170,7 @@ func Register(e *sdk.Extension, version string) {
 			if err != nil {
 				return sdk.ErrorResult("cannot determine config dir: " + err.Error()), nil
 			}
-			return sdk.TextResult(fmt.Sprintf("admin %s\n  Config dir: %s\n", version, dir)), nil
+			return sdk.TextResult(fmt.Sprintf("admin %s\n  Config dir: %s\n", Version, dir)), nil
 		},
 	})
 

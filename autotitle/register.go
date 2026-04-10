@@ -18,6 +18,8 @@ import (
 var defaultPrompt string
 
 const (
+	// Version is the autotitle extension version.
+	Version       = "0.2.0"
 	maxTitleRunes = 50
 	chatTimeout   = 10 * time.Second
 	chatModel     = "small"
@@ -28,8 +30,8 @@ const (
 var handlerFired atomic.Bool
 
 // Register adds autotitle's event handler and status tool to the extension.
-func Register(e *sdk.Extension, version string) {
-	e.RegisterTool(toolStatus(version))
+func Register(e *sdk.Extension) {
+	e.RegisterTool(toolStatus())
 
 	e.RegisterEventHandler(sdk.EventHandlerDef{
 		Name:     "autotitle",
@@ -86,7 +88,7 @@ func Register(e *sdk.Extension, version string) {
 	})
 }
 
-func toolStatus(version string) sdk.ToolDef {
+func toolStatus() sdk.ToolDef {
 	return sdk.ToolDef{
 		Name:        "autotitle_status",
 		Description: "Show autotitle extension status, config, and prompt",
@@ -105,7 +107,7 @@ func toolStatus(version string) sdk.ToolDef {
 			}
 
 			var b strings.Builder
-			fmt.Fprintf(&b, "autotitle v%s\n", version)
+			fmt.Fprintf(&b, "autotitle v%s\n", Version)
 			fmt.Fprintf(&b, "  Handler: %s\n", state)
 			fmt.Fprintf(&b, "  Event:   EventAgentEnd\n")
 			fmt.Fprintf(&b, "  Model:   %s\n", chatModel)

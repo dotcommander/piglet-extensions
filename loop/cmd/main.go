@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("loop", "0.1.0")
+	e := sdk.New("loop", loop.Version)
 	loop.Register(e)
 	e.Run()
 }

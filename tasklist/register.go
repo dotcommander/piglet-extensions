@@ -4,8 +4,10 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.2.0"
+
 // Register sets up all tasklist capabilities on the extension.
-func Register(e *sdk.Extension, version string) {
+func Register(e *sdk.Extension) {
 	// Use a shared pointer so closures created before OnInit see the store after init.
 	store := new(*Store)
 
@@ -37,7 +39,7 @@ func Register(e *sdk.Extension, version string) {
 	e.RegisterTool(toolPlan(store))
 	e.RegisterTool(toolLink(store))
 	e.RegisterTool(toolSearch(store))
-	e.RegisterTool(toolStatus(store, version))
+	e.RegisterTool(toolStatus(store))
 
 	// Command.
 	e.RegisterCommand(sdk.CommandDef{

@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("bulk", "0.2.0")
-	bulk.Register(e, "0.2.0")
+	e := sdk.New("bulk", bulk.Version)
+	bulk.Register(e)
 	e.Run()
 }

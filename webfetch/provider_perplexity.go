@@ -1,17 +1,14 @@
 package webfetch
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/dotcommander/piglet-extensions/internal/xdg"
 )
@@ -56,7 +53,7 @@ func NewPerplexityProvider(apiKey string, cfg PerplexityConfig) *PerplexityProvi
 		model:  cfg.Model,
 		apiKey: apiKey,
 		http: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: fetchTimeout,
 		},
 		rateLimiter: newRateLimiter(PerplexityRateLimitInterval),
 	}
@@ -99,38 +96,14 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 	reqBody := perplexityRequest{
 		Model: p.model,
 		Messages: []perplexityMessage{
-			{
-				Role:    "user",
-				Content: fmt.Sprintf(activeFetchPrompt, rawURL),
-			},
+			{Role: "user", Content: fmt.Sprintf(activeFetchPrompt, rawURL)},
 		},
 	}
 
-	body, err := json.Marshal(reqBody)
+	headers := map[string]string{"Authorization": "Bearer " + p.apiKey}
+	respData, err := llmPost(p.http, p.apiURL, headers, reqBody)
 	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiURL, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.http.Do(req)
-	if err != nil {
-		return "", &HTTPError{URL: p.apiURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	respData, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
-	if err != nil {
-		return "", fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		return "", &HTTPError{URL: p.apiURL, StatusCode: resp.StatusCode}
+		return "", err
 	}
 
 	var perplexResp perplexityResponse
@@ -148,8 +121,6 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 
 	content := perplexResp.Choices[0].Message.Content
 
-	// Detect refusal responses — LLMs sometimes return "I cannot access URLs"
-	// as a valid response. Treat these as errors so the chain falls through.
 	if isLLMRefusal(content) {
 		return "", &HTTPError{
 			URL:        rawURL,
@@ -158,12 +129,8 @@ func (p *PerplexityProvider) Fetch(ctx context.Context, rawURL string) (string, 
 		}
 	}
 
-	if len(content) > maxBodyBytes {
-		content = content[:maxBodyBytes] + "\n\n[Content truncated at 100KB]"
-	}
-
 	slog.Debug("perplexity fetch completed", "url", rawURL)
-	return content, nil
+	return truncateBody(content), nil
 }
 
 // Search queries Perplexity for search results.
@@ -171,7 +138,7 @@ func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int
 	loadPerplexityPrompts()
 
 	if limit <= 0 {
-		limit = 5
+		limit = defaultSearchLimit
 	}
 
 	p.rateLimiter.Wait()
@@ -179,38 +146,14 @@ func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int
 	reqBody := perplexityRequest{
 		Model: p.model,
 		Messages: []perplexityMessage{
-			{
-				Role:    "user",
-				Content: fmt.Sprintf(activeSearchPrompt, query, limit),
-			},
+			{Role: "user", Content: fmt.Sprintf(activeSearchPrompt, query, limit)},
 		},
 	}
 
-	body, err := json.Marshal(reqBody)
+	headers := map[string]string{"Authorization": "Bearer " + p.apiKey}
+	respData, err := llmPost(p.http, p.apiURL, headers, reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.http.Do(req)
-	if err != nil {
-		return nil, &HTTPError{URL: p.apiURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	respData, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		return nil, &HTTPError{URL: p.apiURL, StatusCode: resp.StatusCode}
+		return nil, err
 	}
 
 	var perplexResp perplexityResponse
@@ -226,7 +169,6 @@ func (p *PerplexityProvider) Search(ctx context.Context, query string, limit int
 		return nil, fmt.Errorf("no response from perplexity")
 	}
 
-	// Perplexity returns text, not structured results. Parse it into SearchResult format.
 	content := perplexResp.Choices[0].Message.Content
 	results := parsePerplexitySearchResults(content, limit)
 

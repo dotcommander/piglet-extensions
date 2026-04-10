@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("extensions-list", "0.1.0")
+	e := sdk.New("extensions-list", extlist.Version)
 	extlist.Register(e)
 	e.Run()
 }

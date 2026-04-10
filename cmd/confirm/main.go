@@ -10,16 +10,18 @@ import (
 	"github.com/dotcommander/piglet-extensions/confirm"
 )
 
+const version = "0.2.0"
+
 func main() {
 	changes := flag.String("changes", "", "comma-separated changed files")
 	noTest := flag.Bool("no-test", false, "skip tests")
 	noLint := flag.Bool("no-lint", false, "skip lint")
 	jsonOut := flag.Bool("json", false, "JSON output")
-	version := flag.Bool("version", false, "print version")
+	showVersion := flag.Bool("version", false, "print version")
 	flag.Parse()
 
-	if *version {
-		fmt.Println("confirm v0.2.0")
+	if *showVersion {
+		fmt.Println("confirm", version)
 		return
 	}
 

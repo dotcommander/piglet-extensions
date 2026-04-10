@@ -143,7 +143,7 @@ func TestTruncateTitle(t *testing.T) {
 func TestStatusTool_ContainsVersion(t *testing.T) {
 	t.Parallel()
 
-	tool := toolStatus("0.2.0")
+	tool := toolStatus()
 	result, err := tool.Execute(context.Background(), map[string]any{})
 	require.NoError(t, err)
 	assert.Contains(t, result.Content[0].Text, "autotitle v0.2.0")
@@ -152,7 +152,7 @@ func TestStatusTool_ContainsVersion(t *testing.T) {
 func TestStatusTool_ShowsConfig(t *testing.T) {
 	t.Parallel()
 
-	tool := toolStatus("0.2.0")
+	tool := toolStatus()
 	result, err := tool.Execute(context.Background(), map[string]any{})
 	require.NoError(t, err)
 	text := result.Content[0].Text
@@ -167,7 +167,7 @@ func TestStatusTool_ShowsWaitingState(t *testing.T) {
 
 	handlerFired.Store(false)
 
-	tool := toolStatus("0.2.0")
+	tool := toolStatus()
 	result, err := tool.Execute(context.Background(), map[string]any{})
 	require.NoError(t, err)
 	assert.Contains(t, result.Content[0].Text, "Handler: waiting")

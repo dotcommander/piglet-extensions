@@ -3,25 +3,23 @@ package webfetch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/dotcommander/piglet-extensions/cache"
 )
 
 const (
-	maxBodyBytes  = 100 * 1024 // 100KB
-	fetchTimeout  = 30 * time.Second
-	searchTimeout = 15 * time.Second
-	userAgent     = "piglet/1.0"
+	maxBodyBytes       = 100 * 1024 // 100KB
+	defaultSearchLimit = 5
+	fetchTimeout       = 30 * time.Second
+	searchTimeout      = 15 * time.Second
+	userAgent          = "piglet/1.0"
+
+	// noiseElements are HTML tags stripped when extracting page text.
+	noiseElements = "script, style, noscript, nav, header, footer, iframe, svg"
 
 	cacheNSFetch   = "webfetch"
 	cacheNSSearch  = "webfetch_search"
@@ -30,6 +28,14 @@ const (
 )
 
 const truncationNote = "\n\n[Content truncated at 100KB]"
+
+// truncateBody truncates content to maxBodyBytes and appends truncationNote.
+func truncateBody(content string) string {
+	if len(content) <= maxBodyBytes {
+		return content
+	}
+	return content[:maxBodyBytes] + truncationNote
+}
 
 // buildFetchResult formats a fetched page into the standard output format
 // with optional title/URL header and truncation at maxBodyBytes.
@@ -60,7 +66,6 @@ type HTTPError struct {
 	Err        error
 }
 
-// Error implements the error interface.
 func (e *HTTPError) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("request %s: %v", e.URL, e.Err)
@@ -68,13 +73,11 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("request %s: HTTP %d", e.URL, e.StatusCode)
 }
 
-// Unwrap returns the underlying error.
 func (e *HTTPError) Unwrap() error {
 	return e.Err
 }
 
 // llmRefusalPrefixes detects LLM responses that are refusals rather than content.
-// These should not be cached or returned as successful fetches.
 var llmRefusalPrefixes = []string{
 	"i am unable to access",
 	"i cannot access",
@@ -92,10 +95,8 @@ var llmRefusalPrefixes = []string{
 	"i'm not able to browse",
 }
 
-// isLLMRefusal returns true if the content looks like an LLM refusal rather
-// than actual page content. This prevents caching garbage responses.
+// isLLMRefusal returns true if the content looks like an LLM refusal.
 func isLLMRefusal(content string) bool {
-	// Only lowercase the first 100 bytes — all refusal prefixes are short.
 	s := strings.TrimSpace(content)
 	if len(s) > 100 {
 		s = s[:100]
@@ -117,26 +118,20 @@ func isRecoverable(err error) bool {
 
 	var httpErr *HTTPError
 	if errors.As(err, &httpErr) {
-		// Network errors (status 0) are recoverable
 		if httpErr.StatusCode == 0 {
 			return true
 		}
-		// 2xx "soft" failures (e.g. 204 = page needs JS) are always recoverable.
 		if httpErr.StatusCode >= 200 && httpErr.StatusCode < 300 {
 			return true
 		}
-		// 4xx client errors (except 401, 403, 429, 451) are not recoverable.
-		// 451 (Unavailable For Legal Reasons) is often a proxy/reader issue, not the target URL.
 		if httpErr.StatusCode >= 400 && httpErr.StatusCode < 500 &&
 			httpErr.StatusCode != 401 && httpErr.StatusCode != 403 &&
 			httpErr.StatusCode != 429 && httpErr.StatusCode != 451 {
 			return false
 		}
-		// 5xx server errors and 429 rate limits are recoverable
 		return true
 	}
 
-	// Other errors (parsing, etc.) might be recoverable
 	return true
 }
 
@@ -153,7 +148,6 @@ type SearchProvider interface {
 }
 
 // Client performs web fetch and search operations with fallback support.
-// The zero value is not usable; use New, NewWithConfig, Default, or NewForTest.
 type Client struct {
 	fetchProviders  []FetchProvider
 	searchProviders []SearchProvider
@@ -178,43 +172,19 @@ func New(fetchProviders []FetchProvider, searchProviders []SearchProvider, githu
 }
 
 // NewWithConfig creates a Client with providers based on the given config.
-// Fetch priority: Colly → Jina → Rod → agent-browser → Gemini → Perplexity.
-// Search priority: Brave → Exa → Gemini → Perplexity → Jina → DuckDuckGo.
 func NewWithConfig(cfg *Config) *Client {
 	var fetchProviders []FetchProvider
 	var searchProviders []SearchProvider
 
-	// --- Resolve all API keys (config then env) ---
-
-	exaKey := cfg.ExaAPIKey
-	if exaKey == "" {
-		exaKey = os.Getenv("EXA_API_KEY")
-	}
-	braveKey := cfg.BraveAPIKey
-	if braveKey == "" {
-		braveKey = os.Getenv("BRAVE_API_KEY")
-	}
-	geminiKey := cfg.GeminiAPIKey
-	if geminiKey == "" {
-		geminiKey = os.Getenv("GEMINI_API_KEY")
-	}
-	perplexityKey := cfg.PerplexityAPIKey
-	if perplexityKey == "" {
-		perplexityKey = os.Getenv("PERPLEXITY_API_KEY")
-	}
-	jinaKey := cfg.JinaAPIKey
-	if jinaKey == "" {
-		jinaKey = os.Getenv("JINA_API_KEY")
-	}
-
-	// --- Create shared provider instances ---
+	exaKey := firstNonEmpty(cfg.ExaAPIKey, os.Getenv("EXA_API_KEY"))
+	braveKey := firstNonEmpty(cfg.BraveAPIKey, os.Getenv("BRAVE_API_KEY"))
+	geminiKey := firstNonEmpty(cfg.GeminiAPIKey, os.Getenv("GEMINI_API_KEY"))
+	perplexityKey := firstNonEmpty(cfg.PerplexityAPIKey, os.Getenv("PERPLEXITY_API_KEY"))
+	jinaKey := firstNonEmpty(cfg.JinaAPIKey, os.Getenv("JINA_API_KEY"))
 
 	jina := NewJinaProvider(jinaKey, cfg.Jina)
 	gemini := NewGeminiProvider(geminiKey, cfg.Gemini)
 	perplexity := NewPerplexityProvider(perplexityKey, cfg.Perplexity)
-
-	// --- Fetch providers: local fetchers → reader proxy → headless browser → LLM ---
-	// Exa and Brave are search-only; they don't belong in the fetch chain.
 
 	fetchProviders = append(fetchProviders, NewCollyProvider())
 	fetchProviders = append(fetchProviders, jina)
@@ -228,8 +198,6 @@ func NewWithConfig(cfg *Config) *Client {
 	if perplexity != nil {
 		fetchProviders = append(fetchProviders, perplexity)
 	}
-
-	// --- Search providers: structured APIs first, then LLM, then Jina ---
 
 	if brave := NewBraveProvider(braveKey, cfg.Brave); brave != nil {
 		searchProviders = append(searchProviders, brave)
@@ -245,7 +213,6 @@ func NewWithConfig(cfg *Config) *Client {
 	}
 	searchProviders = append(searchProviders, jina)
 
-	// Create GitHub client if enabled
 	var github *GitHubClient
 	if cfg.GitHub.Enabled {
 		github = NewGitHubClient(&cfg.GitHub)
@@ -274,174 +241,12 @@ func NewForTest(readerBase, searchBase string) *Client {
 	return New([]FetchProvider{jina}, []SearchProvider{jina}, nil)
 }
 
-// Fetch retrieves content from the given URL with provider fallback.
-// If raw is false, content is fetched via reader providers (returns clean markdown).
-// If raw is true, the URL is fetched directly.
-func (c *Client) Fetch(ctx context.Context, rawURL string, raw bool) (string, error) {
-	if cached, ok := cache.Get(cacheNSFetch, rawURL); ok {
-		return cached, nil
-	}
-
-	// Raw mode fetches directly without provider fallback
-	if raw {
-		content, err := c.fetchRaw(ctx, rawURL)
-		if err != nil {
-			return "", err
-		}
-		// Store full content before returning
-		c.storage.StoreFetch(rawURL, content)
-		if err := cache.Set(cacheNSFetch, rawURL, content, cacheTTLFetch); err != nil {
-			slog.Debug("cache write failed", "url", rawURL, "error", err)
-		}
-		return content, nil
-	}
-
-	// Try GitHub first if enabled
-	if c.github != nil {
-		result, err := c.github.Fetch(ctx, rawURL)
-		if err != nil {
-			return "", err
-		}
-		if result != nil {
-			content := FormatGitHubResult(result)
-			c.storage.StoreFetch(rawURL, content)
-			if err := cache.Set(cacheNSFetch, rawURL, content, cacheTTLFetch); err != nil {
-				slog.Debug("cache write failed", "url", rawURL, "error", err)
-			}
-			return content, nil
+// firstNonEmpty returns the first non-empty string.
+func firstNonEmpty(s ...string) string {
+	for _, v := range s {
+		if v != "" {
+			return v
 		}
 	}
-
-	// Try each provider in order
-	var lastErr error
-	for _, provider := range c.fetchProviders {
-		content, err := provider.Fetch(ctx, rawURL)
-		if err == nil {
-			// Store full content before returning
-			c.storage.StoreFetch(rawURL, content)
-			if err := cache.Set(cacheNSFetch, rawURL, content, cacheTTLFetch); err != nil {
-				slog.Debug("cache write failed", "url", rawURL, "error", err)
-			}
-			return content, nil
-		}
-
-		slog.Debug("fetch provider failed",
-			"provider", provider.Name(),
-			"url", rawURL,
-			"error", err)
-
-		lastErr = err
-
-		// If error is not recoverable, don't try next provider
-		if !isRecoverable(err) {
-			break
-		}
-	}
-
-	return "", fmt.Errorf("all fetch providers failed: %w", lastErr)
-}
-
-// fetchRaw fetches the URL directly without any provider.
-func (c *Client) fetchRaw(ctx context.Context, rawURL string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("User-Agent", userAgent)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return "", &HTTPError{URL: rawURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return "", &HTTPError{URL: rawURL, StatusCode: resp.StatusCode}
-	}
-
-	limited := io.LimitReader(resp.Body, maxBodyBytes+1)
-	data, err := io.ReadAll(limited)
-	if err != nil {
-		return "", fmt.Errorf("read body: %w", err)
-	}
-
-	content := string(data)
-	if len(data) > maxBodyBytes {
-		content = content[:maxBodyBytes] + "\n\n[Content truncated at 100KB]"
-	}
-
-	return content, nil
-}
-
-// Search queries providers and returns up to limit results with fallback.
-func (c *Client) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
-	cacheKey := fmt.Sprintf("%s:%d", query, limit)
-	if cached, ok := cache.Get(cacheNSSearch, cacheKey); ok {
-		var results []SearchResult
-		if err := json.Unmarshal([]byte(cached), &results); err == nil {
-			return results, nil
-		}
-	}
-
-	// Try each provider in order
-	var lastErr error
-	for _, provider := range c.searchProviders {
-		results, err := provider.Search(ctx, query, limit)
-		if err == nil {
-			// Store results before returning
-			c.storage.StoreSearch(query, results)
-			if data, err := json.Marshal(results); err == nil {
-				if err := cache.Set(cacheNSSearch, cacheKey, string(data), cacheTTLSearch); err != nil {
-					slog.Debug("cache write failed", "query", query, "error", err)
-				}
-			}
-			return results, nil
-		}
-
-		slog.Debug("search provider failed",
-			"provider", provider.Name(),
-			"query", query,
-			"error", err)
-
-		lastErr = err
-
-		// If error is not recoverable, don't try next provider
-		if !isRecoverable(err) {
-			break
-		}
-	}
-
-	// Fallback: fetch a DuckDuckGo search page via reader providers
-	slog.Debug("search providers exhausted, falling back to web fetch", "query", query)
-	ddgURL := c.ddgSearchURL + "?q=" + url.QueryEscape(query)
-	content, err := c.Fetch(ctx, ddgURL, false)
-	if err != nil {
-		return nil, fmt.Errorf("all search providers failed (fetch fallback also failed): %w", lastErr)
-	}
-
-	return []SearchResult{{
-		Title:       "Web search results for: " + query,
-		URL:         ddgURL,
-		Description: content,
-	}}, nil
-}
-
-// FormatResults renders a slice of SearchResults as a markdown list.
-func FormatResults(results []SearchResult) string {
-	if len(results) == 0 {
-		return "No results found."
-	}
-	var b strings.Builder
-	for i, r := range results {
-		fmt.Fprintf(&b, "%d. **%s**\n   %s\n   %s\n\n", i+1, r.Title, r.URL, r.Description)
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
-
-// GetStorage returns the session storage for cached results.
-func (c *Client) GetStorage() *Storage {
-	return c.storage
+	return ""
 }

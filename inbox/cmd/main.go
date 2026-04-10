@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("inbox", "0.1.0")
+	e := sdk.New("inbox", inbox.Version)
 	inbox.Register(e)
 	e.Run()
 }

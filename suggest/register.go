@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"sync/atomic"
-	"time"
 
 	sdk "github.com/dotcommander/piglet/sdk"
 )
+
+const Version = "0.1.0"
 
 // Register wires the suggest extension into a shared SDK extension.
 func Register(e *sdk.Extension) {
@@ -48,7 +49,7 @@ func Register(e *sdk.Extension) {
 			workingDir, _ := cwd.Load().(string)
 			projCtx := GatherContext(workingDir, turn)
 
-			suggestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			suggestCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
 			defer cancel()
 
 			suggestion, err := s.Generate(suggestCtx, turn, projCtx)

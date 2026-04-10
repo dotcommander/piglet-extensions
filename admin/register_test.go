@@ -172,7 +172,7 @@ func TestConfigCommand_DefaultShowsListing(t *testing.T) {
 	var messages []string
 	mock := &stubExt{messages: &messages}
 
-	handler := configCommand("0.2.0", mock)
+	handler := configCommand(mock)
 	require.NoError(t, handler(context.Background(), ""))
 	require.Len(t, messages, 1)
 	assert.Contains(t, messages[0], "Config directory:")
@@ -185,10 +185,10 @@ func TestConfigCommand_SetupSubcommand(t *testing.T) {
 	var messages []string
 	mock := &stubExt{messages: &messages}
 
-	handler := configCommand("0.2.0", mock)
+	handler := configCommand(mock)
 	require.NoError(t, handler(context.Background(), "--version"))
 	require.Len(t, messages, 1)
-	assert.Equal(t, "admin v0.2.0", messages[0])
+	assert.Equal(t, "admin v0.3.0", messages[0])
 }
 
 func TestConfigCommand_VersionFlag(t *testing.T) {
@@ -197,10 +197,10 @@ func TestConfigCommand_VersionFlag(t *testing.T) {
 	var messages []string
 	mock := &stubExt{messages: &messages}
 
-	handler := configCommand("0.2.0", mock)
+	handler := configCommand(mock)
 	require.NoError(t, handler(context.Background(), "--version"))
 	require.Len(t, messages, 1)
-	assert.Equal(t, "admin v0.2.0", messages[0])
+	assert.Equal(t, "admin v0.3.0", messages[0])
 }
 
 func TestConfigCommand_UnknownArg(t *testing.T) {
@@ -209,7 +209,7 @@ func TestConfigCommand_UnknownArg(t *testing.T) {
 	var messages []string
 	mock := &stubExt{messages: &messages}
 
-	handler := configCommand("0.2.0", mock)
+	handler := configCommand(mock)
 	require.NoError(t, handler(context.Background(), "garbage"))
 	require.Len(t, messages, 1)
 	assert.Contains(t, messages[0], "Usage:")

@@ -8,6 +8,9 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+// Version is the clipboard extension version.
+const Version = "0.2.0"
+
 // Register adds clipboard's tools and shortcut to the extension.
 func Register(e *sdk.Extension) {
 	e.RegisterTool(sdk.ToolDef{

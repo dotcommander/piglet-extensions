@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"unicode"
 )
 
 // injectionCheck is a single metacharacter injection validator.
+// cmd is the original command; stripped has single-quoted segments removed.
 type injectionCheck struct {
 	name    string
-	check   func(cmd string) bool
+	check   func(cmd, stripped string) bool
 	message string
 }
 
@@ -58,8 +58,9 @@ var injectionChecks = []injectionCheck{
 // ValidateInjection runs all injection checks against a bash command.
 // Returns nil if safe, an error describing the violation if blocked.
 func ValidateInjection(cmd string) error {
+	stripped := stripSingleQuotes(cmd)
 	for _, ic := range injectionChecks {
-		if ic.check(cmd) {
+		if ic.check(cmd, stripped) {
 			return fmt.Errorf("injection blocked (%s): %s", ic.name, ic.message)
 		}
 	}
@@ -73,7 +74,7 @@ func ValidateInjection(cmd string) error {
 // hasControlCharacters detects non-printable characters (0x00-0x1F) except
 // tab (0x09), newline (0x0A), and carriage return (0x0D) which are normal
 // in shell commands.
-func hasControlCharacters(cmd string) bool {
+func hasControlCharacters(cmd, _ string) bool {
 	for _, r := range cmd {
 		if r < 0x20 && r != '\t' && r != '\n' && r != '\r' {
 			return true
@@ -86,9 +87,7 @@ func hasControlCharacters(cmd string) bool {
 // Allows $() inside single-quoted strings (where it's literal).
 var cmdSubRegex = regexp.MustCompile(`\$\(|` + "`")
 
-func hasCommandSubstitution(cmd string) bool {
-	// Strip single-quoted segments (where $() is literal).
-	stripped := stripSingleQuotes(cmd)
+func hasCommandSubstitution(_ string, stripped string) bool {
 	return cmdSubRegex.MatchString(stripped)
 }
 
@@ -96,8 +95,7 @@ func hasCommandSubstitution(cmd string) bool {
 // e.g., cat$IFS/etc/passwd
 var ifsRegex = regexp.MustCompile(`\$\{?IFS\}?`)
 
-func hasIFSInjection(cmd string) bool {
-	stripped := stripSingleQuotes(cmd)
+func hasIFSInjection(_ string, stripped string) bool {
 	return ifsRegex.MatchString(stripped)
 }
 
@@ -114,8 +112,7 @@ var dangerousBraceWords = []string{
 	"-rf", "-fr", "-f", "--force", "--hard",
 }
 
-func hasDangerousBraceExpansion(cmd string) bool {
-	stripped := stripSingleQuotes(cmd)
+func hasDangerousBraceExpansion(_ string, stripped string) bool {
 	matches := braceRegex.FindAllString(stripped, -1)
 	for _, m := range matches {
 		inner := strings.ToLower(m[1 : len(m)-1]) // strip { }
@@ -131,8 +128,7 @@ func hasDangerousBraceExpansion(cmd string) bool {
 // hasProcessSubstitution detects <(...) and >(...) process substitution.
 var procSubRegex = regexp.MustCompile(`[<>]\(`)
 
-func hasProcessSubstitution(cmd string) bool {
-	stripped := stripSingleQuotes(cmd)
+func hasProcessSubstitution(_ string, stripped string) bool {
 	return procSubRegex.MatchString(stripped)
 }
 
@@ -141,8 +137,7 @@ func hasProcessSubstitution(cmd string) bool {
 // e.g., cat safe.txt \; rm -rf /
 var backslashOpRegex = regexp.MustCompile(`\\[;|&]`)
 
-func hasBackslashOperators(cmd string) bool {
-	stripped := stripSingleQuotes(cmd)
+func hasBackslashOperators(_ string, stripped string) bool {
 	// Also strip double-quoted segments where backslash-escaping is expected.
 	stripped = stripDoubleQuotes(stripped)
 	return backslashOpRegex.MatchString(stripped)
@@ -156,65 +151,6 @@ var varRedirectRegex = regexp.MustCompile(
 		`|>\s*\$\{?\w+\}?`, // > $VAR or > ${VAR}
 )
 
-func hasVariableRedirect(cmd string) bool {
-	stripped := stripSingleQuotes(cmd)
+func hasVariableRedirect(_ string, stripped string) bool {
 	return varRedirectRegex.MatchString(stripped)
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// stripSingleQuotes removes content inside single quotes where shell
-// metacharacters are literal. Handles escaped single quotes (\').
-func stripSingleQuotes(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	inSingle := false
-	runes := []rune(s)
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-		if r == '\'' && !inSingle {
-			inSingle = true
-			continue
-		}
-		if r == '\'' && inSingle {
-			inSingle = false
-			continue
-		}
-		if !inSingle {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
-// stripDoubleQuotes removes content inside double quotes.
-// Handles backslash escaping within double quotes.
-func stripDoubleQuotes(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	inDouble := false
-	runes := []rune(s)
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-		if r == '\\' && inDouble && i+1 < len(runes) {
-			i++ // skip escaped char
-			continue
-		}
-		if r == '"' {
-			inDouble = !inDouble
-			continue
-		}
-		if !inDouble {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
-// isAlphaOrUnderscore reports whether r is a valid shell variable character.
-// Unused but retained for potential future use.
-func isAlphaOrUnderscore(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
 }

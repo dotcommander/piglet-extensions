@@ -13,6 +13,8 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.1.0"
+
 const (
 	promptOrder = 40 // before memory (50)
 

@@ -3,6 +3,7 @@ package sift
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 func CompressWithTool(toolName, text string, cfg Config, cwd string) string {
@@ -63,26 +64,23 @@ func collapseBlankLines(lines []string, threshold int) []string {
 			blankCount++
 			continue
 		}
-		if blankCount > 0 {
-			emit := blankCount
-			if blankCount >= threshold {
-				emit = 1
-			}
-			for range emit {
-				result = append(result, "")
-			}
-			blankCount = 0
-		}
+		result = emitBlanks(result, blankCount, threshold)
+		blankCount = 0
 		result = append(result, line)
 	}
-	if blankCount > 0 {
-		emit := blankCount
-		if blankCount >= threshold {
-			emit = 1
-		}
-		for range emit {
-			result = append(result, "")
-		}
+	return emitBlanks(result, blankCount, threshold)
+}
+
+func emitBlanks(result []string, count, threshold int) []string {
+	if count <= 0 {
+		return result
+	}
+	emit := count
+	if count >= threshold {
+		emit = 1
+	}
+	for range emit {
+		result = append(result, "")
 	}
 	return result
 }
@@ -122,6 +120,9 @@ func truncate(text string, maxSize int, marker string) string {
 	}
 
 	truncated := text[:cutoff]
+	for len(truncated) > 0 && !utf8.RuneStart(truncated[len(truncated)-1]) {
+		truncated = truncated[:len(truncated)-1]
+	}
 	lastNewline := strings.LastIndex(truncated, "\n")
 	if lastNewline > 0 {
 		truncated = truncated[:lastNewline]

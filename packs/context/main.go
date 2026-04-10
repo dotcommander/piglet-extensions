@@ -17,15 +17,15 @@ import (
 
 func main() {
 	e := sdk.New("pack-context", "0.1.0")
-	safety.RegisterWithVersion(e, "memory", "0.2.0", memory.Register)
-	safety.RegisterWithVersion(e, "skill", "0.2.0", skill.Register)
+	safety.Register(e, "memory", memory.Register)
+	safety.Register(e, "skill", skill.Register)
 	safety.Register(e, "gitcontext", gitcontext.Register)
-	safety.RegisterWithVersion(e, "behavior", "0.2.0", behavior.Register)
+	safety.Register(e, "behavior", behavior.Register)
 	safety.Register(e, "prompts", prompts.Register)
-	safety.RegisterWithVersion(e, "session-tools", "0.3.0", sessiontools.Register)
+	safety.Register(e, "session-tools", sessiontools.Register)
 	safety.Register(e, "inbox", inbox.Register)
 	safety.Register(e, "distill", distill.Register)
 	safety.Register(e, "recall", recall.Register)
-	safety.RegisterWithVersion(e, "route", "0.2.0", route.Register)
+	safety.Register(e, "route", route.Register)
 	e.Run()
 }

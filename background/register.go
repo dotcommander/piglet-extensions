@@ -9,18 +9,16 @@ import (
 	"github.com/dotcommander/piglet/sdk"
 )
 
+// Version is the background extension version.
+const Version = "0.2.0"
+
 var (
 	mu      sync.Mutex
-	version string
 	lastRun string // last prompt sent to RunBackground
 )
 
 // Register adds the background extension's commands and status tool.
-func Register(e *sdk.Extension, ver string) {
-	mu.Lock()
-	version = ver
-	mu.Unlock()
-
+func Register(e *sdk.Extension) {
 	handler := cancelHandler(e)
 
 	e.RegisterCommand(bgCommand(e))
@@ -90,7 +88,6 @@ func backgroundStatusTool(e *sdk.Extension) sdk.ToolDef {
 			}
 
 			mu.Lock()
-			ver := version
 			last := lastRun
 			mu.Unlock()
 
@@ -100,7 +97,7 @@ func backgroundStatusTool(e *sdk.Extension) sdk.ToolDef {
 			}
 
 			var b strings.Builder
-			fmt.Fprintf(&b, "background %s\n", ver)
+			fmt.Fprintf(&b, "background %s\n", Version)
 			fmt.Fprintf(&b, "  State:    %s\n", state)
 			if last != "" {
 				fmt.Fprintf(&b, "  Last run: %s\n", last)

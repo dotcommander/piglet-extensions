@@ -9,6 +9,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const dispatchConcurrency = 3
+
 // DispatchResult holds the outcome of a single sub-task.
 type DispatchResult struct {
 	Index     int
@@ -26,7 +28,7 @@ func Dispatch(ctx context.Context, ext *sdk.Extension, tasks []SubTask) []Dispat
 	results := make([]DispatchResult, len(tasks))
 
 	eg, egCtx := errgroup.WithContext(ctx)
-	eg.SetLimit(3)
+	eg.SetLimit(dispatchConcurrency)
 
 	for i, task := range tasks {
 		eg.Go(func() error {

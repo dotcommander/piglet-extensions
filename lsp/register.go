@@ -14,8 +14,10 @@ import (
 //go:embed defaults/prompt.md
 var defaultPrompt string
 
+const Version = "0.2.0"
+
 // Register wires the lsp extension into a shared SDK extension.
-func Register(e *sdk.Extension, version string) {
+func Register(e *sdk.Extension) {
 	var mgr *Manager
 
 	positionParams := map[string]any{
@@ -167,9 +169,9 @@ func Register(e *sdk.Extension, version string) {
 		},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
 			if mgr == nil {
-				return sdk.TextResult(fmt.Sprintf("lsp v%s\nState: not initialized", version)), nil
+				return sdk.TextResult(fmt.Sprintf("lsp v%s\nState: not initialized", Version)), nil
 			}
-			return sdk.TextResult(fmt.Sprintf("lsp v%s\nCWD: %s", version, mgr.CWD())), nil
+			return sdk.TextResult(fmt.Sprintf("lsp v%s\nCWD: %s", Version, mgr.CWD())), nil
 		},
 	})
 }

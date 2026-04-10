@@ -11,11 +11,14 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+// Version is the memory extension version.
+const Version = "0.2.0"
+
 //go:embed defaults/compact-system.md
 var defaultCompactSystem string
 
 // Register registers the memory extension's tools, commands, and event handlers.
-func Register(e *sdk.Extension, version string) {
+func Register(e *sdk.Extension) {
 	var rt memoryRuntime
 
 	e.OnInitAppend(func(x *sdk.Extension) {
@@ -79,7 +82,7 @@ func Register(e *sdk.Extension, version string) {
 	e.RegisterTool(rt.toolRelate())
 	e.RegisterTool(rt.toolRelated())
 	e.RegisterTool(rt.toolDelete())
-	e.RegisterTool(rt.toolStatus(version))
+	e.RegisterTool(rt.toolStatus(Version))
 
 	e.RegisterCommand(rt.command(e))
 }

@@ -4,6 +4,8 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.2.0"
+
 // codeChangingTools lists tool names that modify source code.
 var codeChangingTools = map[string]bool{
 	"write_file":    true,
@@ -46,8 +48,8 @@ var repomapToolParams = map[string]any{
 }
 
 // Register wires the repomap extension into a shared SDK extension.
-func Register(e *sdk.Extension, version string) {
-	s := newRepomapState(version)
+func Register(e *sdk.Extension) {
+	s := newRepomapState()
 	s.registerOnInit(e)
 	s.registerEventHandler(e)
 	s.registerTools(e)

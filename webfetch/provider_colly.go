@@ -104,7 +104,7 @@ func (p *CollyProvider) Fetch(ctx context.Context, rawURL string) (string, error
 func extractText(e *colly.HTMLElement) string {
 	// Remove script, style, nav, header, footer elements from the DOM copy
 	dom := e.DOM
-	dom.Find("script, style, noscript, nav, header, footer, iframe, svg").Remove()
+	dom.Find(noiseElements).Remove()
 
 	text := strings.TrimSpace(dom.Text())
 

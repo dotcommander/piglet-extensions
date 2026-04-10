@@ -13,6 +13,8 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.1.0"
+
 // delivererShim wraps *sdk.Extension to satisfy inbox.Deliverer.
 // Steer is not yet in the SDK; fall back to SendMessage.
 type delivererShim struct{ e *sdk.Extension }

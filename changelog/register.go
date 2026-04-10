@@ -11,6 +11,9 @@ import (
 	sdk "github.com/dotcommander/piglet/sdk"
 )
 
+// Version is the changelog extension version.
+const Version = "0.2.0"
+
 var (
 	cfg Config
 	cwd string

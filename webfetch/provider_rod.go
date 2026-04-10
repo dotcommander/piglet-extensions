@@ -105,12 +105,13 @@ func (p *RodProvider) Fetch(ctx context.Context, rawURL string) (string, error) 
 	}
 
 	// Remove noise elements before extracting text
-	_, _ = page.Eval(`() => {
-		const remove = ['script','style','noscript','nav','header','footer','iframe','svg'];
+	jsTags := strings.ReplaceAll(noiseElements, ", ", "','")
+	_, _ = page.Eval(fmt.Sprintf(`() => {
+		const remove = ['%s'];
 		remove.forEach(tag => {
 			document.querySelectorAll(tag).forEach(el => el.remove());
 		});
-	}`)
+	}`, jsTags))
 
 	// Get text content
 	textObj, err := page.Eval(`() => document.body ? document.body.innerText : ''`)

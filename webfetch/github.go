@@ -2,9 +2,7 @@ package webfetch
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -46,10 +44,8 @@ type githubURL struct {
 //   - https://github.com/owner/repo/tree/branch/path
 //   - https://github.com/owner/repo/commit/sha
 func parseGitHubURL(rawURL string) (*githubURL, bool) {
-	// Normalize URL
 	rawURL = strings.TrimSpace(rawURL)
 
-	// Match GitHub URLs
 	re := regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+)(?:/(tree/([^/]+)(?:/(.*))?|commit/([a-f0-9]{40}))?)/?$`)
 	matches := re.FindStringSubmatch(rawURL)
 	if matches == nil {
@@ -61,14 +57,12 @@ func parseGitHubURL(rawURL string) (*githubURL, bool) {
 		Repo:  strings.TrimSuffix(matches[2], ".git"),
 	}
 
-	// Check if it's a commit URL
 	if matches[6] != "" {
 		result.Commit = matches[6]
 		result.IsCommit = true
 		return result, true
 	}
 
-	// Tree URL or root repo URL
 	result.Branch = matches[4]
 	result.Path = matches[5]
 
@@ -89,7 +83,7 @@ func NewGitHubClient(cfg *GitHubConfig) *GitHubClient {
 	return &GitHubClient{
 		config: cfg,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: fetchTimeout,
 		},
 	}
 }
@@ -99,18 +93,15 @@ func NewGitHubClient(cfg *GitHubConfig) *GitHubClient {
 func (g *GitHubClient) Fetch(ctx context.Context, rawURL string) (*GitHubResult, error) {
 	parsed, ok := parseGitHubURL(rawURL)
 	if !ok {
-		return nil, nil // Not a GitHub URL
+		return nil, nil
 	}
 
-	// Commit URLs always use API (no clone needed)
 	if parsed.IsCommit {
 		return g.fetchCommit(ctx, parsed)
 	}
 
-	// Clean up old clones before creating new ones
 	g.cleanupOldClones()
 
-	// Check repo size if skipLargeRepos is enabled
 	if g.config.SkipLargeRepos {
 		tooLarge, err := g.checkRepoSize(ctx, parsed)
 		if err != nil {
@@ -123,7 +114,6 @@ func (g *GitHubClient) Fetch(ctx context.Context, rawURL string) (*GitHubResult,
 		}
 	}
 
-	// Try clone first
 	result, err := g.clone(ctx, parsed)
 	if err != nil {
 		slog.Debug("clone failed, falling back to API", "error", err)
@@ -137,12 +127,9 @@ func (g *GitHubClient) Fetch(ctx context.Context, rawURL string) (*GitHubResult,
 func (g *GitHubClient) clone(ctx context.Context, parsed *githubURL) (*GitHubResult, error) {
 	localPath := filepath.Join(os.TempDir(), fmt.Sprintf("piglet-gh-%s-%s", parsed.Owner, parsed.Repo))
 
-	// Check if already cloned
 	if _, err := os.Stat(localPath); err == nil {
-		// Already exists, use it
 		slog.Debug("using existing clone", "path", localPath)
 	} else {
-		// Clone the repo
 		cloneURL := fmt.Sprintf("https://github.com/%s/%s.git", parsed.Owner, parsed.Repo)
 
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -159,19 +146,16 @@ func (g *GitHubClient) clone(ctx context.Context, parsed *githubURL) (*GitHubRes
 		}
 	}
 
-	// Build result from cloned repo
 	result := &GitHubResult{
 		LocalPath: localPath,
 		UsedAPI:   false,
 	}
 
-	// Read README
 	readmePath := filepath.Join(localPath, parsed.Path, "README.md")
 	if data, err := os.ReadFile(readmePath); err == nil {
 		result.README = string(data)
 	}
 
-	// Build tree
 	tree, err := g.buildTree(localPath, parsed.Path)
 	if err != nil {
 		slog.Debug("failed to build tree", "error", err)
@@ -193,7 +177,6 @@ func (g *GitHubClient) buildTree(localPath, subPath string) ([]string, error) {
 			return err
 		}
 
-		// Skip .git directory
 		if strings.Contains(path, "/.git/") || filepath.Base(path) == ".git" {
 			if d.IsDir() {
 				return filepath.SkipDir
@@ -228,167 +211,6 @@ func (g *GitHubClient) buildTree(localPath, subPath string) ([]string, error) {
 	}
 
 	return tree, nil
-}
-
-// checkRepoSize checks if the repo exceeds the size limit.
-// Returns (true, nil) if repo is too large, (false, nil) if OK.
-func (g *GitHubClient) checkRepoSize(ctx context.Context, parsed *githubURL) (bool, error) {
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s", parsed.Owner, parsed.Repo)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return false, err
-	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err := g.httpClient.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 404 {
-		// Repo not found via API, might be private - try clone anyway
-		return false, nil
-	}
-
-	if resp.StatusCode >= 400 {
-		return false, fmt.Errorf("GitHub API error: %d", resp.StatusCode)
-	}
-
-	var repoInfo struct {
-		Size int `json:"size"` // in KB
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&repoInfo); err != nil {
-		return false, err
-	}
-
-	// 350MB threshold (size is in KB)
-	const maxSizeKB = 350 * 1024
-	return repoInfo.Size > maxSizeKB, nil
-}
-
-// fetchViaAPI fetches repo content via GitHub API.
-func (g *GitHubClient) fetchViaAPI(ctx context.Context, parsed *githubURL) (*GitHubResult, error) {
-	result := &GitHubResult{
-		UsedAPI: true,
-	}
-
-	// Fetch README
-	readmeURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/readme", parsed.Owner, parsed.Repo)
-	if parsed.Branch != "" {
-		readmeURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/readme?ref=%s", parsed.Owner, parsed.Repo, parsed.Branch)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, readmeURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create readme request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github.v3.raw")
-
-	resp, err := g.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch readme: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 200 {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 100*1024))
-		result.README = string(data)
-	}
-
-	// Fetch tree
-	treeURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees/HEAD?recursive=1", parsed.Owner, parsed.Repo)
-	if parsed.Branch != "" {
-		treeURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1", parsed.Owner, parsed.Repo, parsed.Branch)
-	}
-
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, treeURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create tree request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err = g.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch tree: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 200 {
-		var treeResp struct {
-			Tree []struct {
-				Path string `json:"path"`
-				Type string `json:"type"`
-			} `json:"tree"`
-		}
-
-		if err := json.NewDecoder(resp.Body).Decode(&treeResp); err == nil {
-			for _, item := range treeResp.Tree {
-				if item.Type == "tree" {
-					result.Tree = append(result.Tree, item.Path+"/")
-				} else {
-					result.Tree = append(result.Tree, item.Path)
-				}
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// fetchCommit fetches commit info via API (no clone for commit URLs).
-func (g *GitHubClient) fetchCommit(ctx context.Context, parsed *githubURL) (*GitHubResult, error) {
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s", parsed.Owner, parsed.Repo, parsed.Commit)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create commit request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err := g.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch commit: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("GitHub API error: %d", resp.StatusCode)
-	}
-
-	var commitInfo struct {
-		SHA    string `json:"sha"`
-		Commit struct {
-			Message string `json:"message"`
-			Author  struct {
-				Name  string    `json:"name"`
-				Date  time.Time `json:"date"`
-				Email string    `json:"email"`
-			} `json:"author"`
-		} `json:"commit"`
-		HTMLURL string `json:"html_url"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&commitInfo); err != nil {
-		return nil, fmt.Errorf("decode commit: %w", err)
-	}
-
-	result := &GitHubResult{
-		UsedAPI: true,
-		Tree:    []string{commitInfo.SHA},
-		README: fmt.Sprintf("# Commit %s\n\n**Author:** %s <%s>\n**Date:** %s\n\n%s\n\n[View on GitHub](%s)",
-			commitInfo.SHA[:7],
-			commitInfo.Commit.Author.Name,
-			commitInfo.Commit.Author.Email,
-			commitInfo.Commit.Author.Date.Format(time.RFC3339),
-			commitInfo.Commit.Message,
-			commitInfo.HTMLURL,
-		),
-	}
-
-	return result, nil
 }
 
 // cleanupOldClones removes clone directories older than 1 hour.
@@ -445,7 +267,7 @@ func FormatGitHubResult(result *GitHubResult) string {
 	}
 
 	if result.LocalPath != "" {
-		b.WriteString(fmt.Sprintf("\n*Cloned to: %s*\n", result.LocalPath))
+		fmt.Fprintf(&b, "\n*Cloned to: %s*\n", result.LocalPath)
 	}
 
 	return b.String()

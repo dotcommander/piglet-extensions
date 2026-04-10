@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("webfetch", "0.3.0")
-	webfetch.Register(e, "0.3.0")
+	e := sdk.New("webfetch", webfetch.Version)
+	webfetch.Register(e)
 	e.Run()
 }

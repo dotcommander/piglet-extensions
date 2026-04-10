@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("mcp", "0.2.0")
+	e := sdk.New("mcp", mcp.Version)
 
 	var mgr *mcp.Manager
 

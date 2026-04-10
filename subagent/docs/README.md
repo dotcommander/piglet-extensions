@@ -1,55 +1,32 @@
 # Subagent
 
-Delegates tasks to independent sub-agents that run to completion with their own LLM context, enabling focused execution for research, analysis, or complex tasks.
+Delegates tasks to independent sub-agents that run as full piglet instances in tmux panes. The user can observe and intervene in real time via the tmux pane. Results are returned when the agent completes.
 
 ## Capabilities
 
 | Capability | Name | Description |
 |------------|------|-------------|
-| tool | `dispatch` | Launch a sub-agent with a task |
+| tool | `dispatch` | Spawn a piglet agent in a tmux pane |
 
 ## Tool Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `task` | string | yes | Task instructions for the sub-agent |
-| `context` | string | no | Additional context appended to system prompt |
-| `tools` | enum | no | `read_only` (default) or `all` |
-| `max_turns` | int | no | Max agent turns (default: 10) |
+| `task` | string | yes | Task instructions for the agent |
 | `model` | string | no | Model override (e.g., `anthropic/claude-haiku-4-5`) |
-| `prefer` | enum | no | `default` or `small` model preference |
-
-## Depth Guard
-
-Subagents are protected against runaway nesting. By default, nesting is limited to **2 levels** (main → subagent → sub-subagent). Deeper calls are blocked with an error.
-
-| Env Var | Default | Description |
-|---------|---------|-------------|
-| `PIGLET_SUBAGENT_MAX_DEPTH` | 2 | Maximum nesting depth |
-| `PIGLET_SUBAGENT_DEPTH` | (internal) | Current depth, auto-propagated |
-
-To allow deeper nesting (use with caution):
-```bash
-export PIGLET_SUBAGENT_MAX_DEPTH=3
-```
+| `split` | enum | no | Tmux layout: `horizontal` (default), `vertical`, or `window` |
 
 ## How It Works
 
-1. Resolves LLM provider from auth config (respects `prefer` for model selection)
-2. Retrieves host tools — filtered to background-safe tools for `read_only`, all tools for `all`
-3. Creates a new agent with the selected provider, tools, and system prompt from `~/.config/piglet/subagent.md`
-4. Runs the agent's event loop, collecting token usage and output per turn
-5. Returns formatted output with turn count and token statistics
+1. Validates that tmux is available and the session is running inside tmux
+2. Creates a temporary directory for the agent result file
+3. Spawns a full piglet instance in a new tmux pane with the task as prompt
+4. Polls for the result file until the agent completes or a 5-minute timeout is reached
+5. Returns the agent output, or a status message if cancelled/timed out
 
-## Configuration
+The spawned piglet instance runs with full tool access. The pane stays open after completion so the user can review output before closing it.
 
-| File | Purpose |
-|------|---------|
-| `~/.config/piglet/subagent.md` | System prompt for sub-agents (cached at startup) |
+## Requirements
 
-## Tool Access Modes
-
-| Mode | Available Tools |
-|------|-----------------|
-| `read_only` | Only background-safe tools (read, grep, glob, etc.) |
-| `all` | All host tools including write, edit, bash |
+- tmux must be installed and available in `PATH`
+- piglet must be running inside a tmux session (`TMUX` environment variable set)

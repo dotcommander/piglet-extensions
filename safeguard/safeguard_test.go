@@ -2,7 +2,6 @@ package safeguard_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/dotcommander/piglet-extensions/safeguard"
@@ -10,10 +9,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// newTestBlocker compiles patterns and returns a blocker for the given profile.
+func newTestBlocker(t *testing.T, profile string, patterns []string, cwd string) func(context.Context, string, map[string]any) (bool, map[string]any, error) {
+	t.Helper()
+	compiled, err := safeguard.CompilePatterns(patterns)
+	require.NoError(t, err)
+	return safeguard.BlockerWithConfig(safeguard.Config{Profile: profile}, compiled, cwd, nil)
+}
+
 func TestBlockerWithConfig_BalancedBlocksPattern(t *testing.T) {
 	t.Parallel()
-	patterns := safeguard.CompilePatterns([]string{`\brm\s+-rf\b`})
-	blocker := safeguard.BlockerWithConfig(safeguard.Config{Profile: safeguard.ProfileBalanced}, patterns, "", nil)
+	blocker := newTestBlocker(t, safeguard.ProfileBalanced, []string{`\brm\s+-rf\b`}, "")
 
 	allow, _, err := blocker(context.Background(), "bash", map[string]any{"command": "rm -rf /"})
 	assert.False(t, allow)
@@ -23,8 +29,7 @@ func TestBlockerWithConfig_BalancedBlocksPattern(t *testing.T) {
 
 func TestBlockerWithConfig_BalancedAllowsSafe(t *testing.T) {
 	t.Parallel()
-	patterns := safeguard.CompilePatterns([]string{`\brm\s+-rf\b`})
-	blocker := safeguard.BlockerWithConfig(safeguard.Config{Profile: safeguard.ProfileBalanced}, patterns, "", nil)
+	blocker := newTestBlocker(t, safeguard.ProfileBalanced, []string{`\brm\s+-rf\b`}, "")
 
 	allow, args, err := blocker(context.Background(), "bash", map[string]any{"command": "ls -la"})
 	assert.True(t, allow)
@@ -34,8 +39,7 @@ func TestBlockerWithConfig_BalancedAllowsSafe(t *testing.T) {
 
 func TestBlockerWithConfig_BalancedIgnoresWrite(t *testing.T) {
 	t.Parallel()
-	patterns := safeguard.CompilePatterns([]string{`\brm\s+-rf\b`})
-	blocker := safeguard.BlockerWithConfig(safeguard.Config{Profile: safeguard.ProfileBalanced}, patterns, "/workspace", nil)
+	blocker := newTestBlocker(t, safeguard.ProfileBalanced, []string{`\brm\s+-rf\b`}, "/workspace")
 
 	// Balanced mode does NOT block writes outside workspace
 	allow, _, err := blocker(context.Background(), "write", map[string]any{"file_path": "/etc/passwd"})
@@ -45,8 +49,7 @@ func TestBlockerWithConfig_BalancedIgnoresWrite(t *testing.T) {
 
 func TestBlockerWithConfig_StrictBlocksOutsideWorkspace(t *testing.T) {
 	t.Parallel()
-	patterns := safeguard.CompilePatterns(nil)
-	blocker := safeguard.BlockerWithConfig(safeguard.Config{Profile: safeguard.ProfileStrict}, patterns, "/workspace/project", nil)
+	blocker := newTestBlocker(t, safeguard.ProfileStrict, nil, "/workspace/project")
 
 	allow, _, err := blocker(context.Background(), "write", map[string]any{"file_path": "/etc/passwd"})
 	assert.False(t, allow)
@@ -56,8 +59,7 @@ func TestBlockerWithConfig_StrictBlocksOutsideWorkspace(t *testing.T) {
 
 func TestBlockerWithConfig_StrictAllowsInsideWorkspace(t *testing.T) {
 	t.Parallel()
-	patterns := safeguard.CompilePatterns(nil)
-	blocker := safeguard.BlockerWithConfig(safeguard.Config{Profile: safeguard.ProfileStrict}, patterns, "/workspace/project", nil)
+	blocker := newTestBlocker(t, safeguard.ProfileStrict, nil, "/workspace/project")
 
 	allow, _, err := blocker(context.Background(), "write", map[string]any{"file_path": "/workspace/project/main.go"})
 	assert.True(t, allow)
@@ -66,8 +68,7 @@ func TestBlockerWithConfig_StrictAllowsInsideWorkspace(t *testing.T) {
 
 func TestBlockerWithConfig_StrictAllowsNonMutating(t *testing.T) {
 	t.Parallel()
-	patterns := safeguard.CompilePatterns(nil)
-	blocker := safeguard.BlockerWithConfig(safeguard.Config{Profile: safeguard.ProfileStrict}, patterns, "/workspace", nil)
+	blocker := newTestBlocker(t, safeguard.ProfileStrict, nil, "/workspace")
 
 	// read tool is not blocked even outside workspace
 	allow, _, err := blocker(context.Background(), "read", map[string]any{"file_path": "/etc/hosts"})
@@ -77,8 +78,7 @@ func TestBlockerWithConfig_StrictAllowsNonMutating(t *testing.T) {
 
 func TestBlockerWithConfig_StrictAlsoBlocksPatterns(t *testing.T) {
 	t.Parallel()
-	patterns := safeguard.CompilePatterns([]string{`\brm\s+-rf\b`})
-	blocker := safeguard.BlockerWithConfig(safeguard.Config{Profile: safeguard.ProfileStrict}, patterns, "/workspace", nil)
+	blocker := newTestBlocker(t, safeguard.ProfileStrict, []string{`\brm\s+-rf\b`}, "/workspace")
 
 	allow, _, err := blocker(context.Background(), "bash", map[string]any{"command": "rm -rf /"})
 	assert.False(t, allow)
@@ -87,9 +87,6 @@ func TestBlockerWithConfig_StrictAlsoBlocksPatterns(t *testing.T) {
 
 func TestAuditLogger(t *testing.T) {
 	t.Parallel()
-
-	dir := t.TempDir()
-	_ = filepath.Join(dir, "audit.jsonl")
 
 	// Verify that a nil AuditLogger doesn't panic
 	var nilLogger *safeguard.AuditLogger
@@ -114,9 +111,8 @@ func TestTruncate(t *testing.T) {
 
 	// truncate is unexported, but we can test it via BlockerWithConfig indirectly
 	// by checking that long commands in audit don't cause issues
-	patterns := safeguard.CompilePatterns([]string{`\brm\s+-rf\b`})
 	longCmd := "rm -rf " + string(make([]byte, 300))
-	blocker := safeguard.BlockerWithConfig(safeguard.Config{Profile: safeguard.ProfileBalanced}, patterns, "", nil)
+	blocker := newTestBlocker(t, safeguard.ProfileBalanced, []string{`\brm\s+-rf\b`}, "")
 
 	allow, _, err := blocker(context.Background(), "bash", map[string]any{"command": longCmd})
 	assert.False(t, allow)

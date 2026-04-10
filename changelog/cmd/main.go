@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("changelog", "0.2.0")
+	e := sdk.New("changelog", changelog.Version)
 	changelog.Register(e)
 	e.Run()
 }

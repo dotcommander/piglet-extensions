@@ -16,7 +16,7 @@ func main() {
 	e := sdk.New("pack-agent", "0.1.0")
 	safety.Register(e, "safeguard", safeguard.Register)
 	safety.Register(e, "rtk", rtk.Register)
-	safety.RegisterWithVersion(e, "autotitle", "0.2.0", autotitle.Register)
+	safety.Register(e, "autotitle", autotitle.Register)
 	safety.Register(e, "clipboard", clipboard.Register)
 	safety.Register(e, "subagent", subagent.Register)
 	safety.Register(e, "provider", provider.Register)

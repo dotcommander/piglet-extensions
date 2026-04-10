@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("behavior", "0.2.0")
-	behavior.Register(e, "0.2.0")
+	e := sdk.New("behavior", behavior.Version)
+	behavior.Register(e)
 	e.Run()
 }

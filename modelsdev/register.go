@@ -8,6 +8,8 @@ import (
 	"github.com/dotcommander/piglet/sdk"
 )
 
+const Version = "0.2.0"
+
 const refreshTimeout = 10 * time.Second
 
 // Register registers the modelsdev extension's OnInit handler and commands.

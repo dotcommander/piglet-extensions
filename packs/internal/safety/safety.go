@@ -12,11 +12,6 @@ func Register(e *sdk.Extension, name string, fn func(e *sdk.Extension)) {
 	recoverPanic(name, func() { fn(e) })
 }
 
-// RegisterWithVersion is like Register but for extensions that accept a version string.
-func RegisterWithVersion(e *sdk.Extension, name, version string, fn func(e *sdk.Extension, version string)) {
-	recoverPanic(name, func() { fn(e, version) })
-}
-
 // recoverPanic runs fn, logging any panic instead of propagating it.
 func recoverPanic(name string, fn func()) {
 	defer func() {

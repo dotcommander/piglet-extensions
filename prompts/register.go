@@ -16,6 +16,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const Version = "0.1.0"
+
 // Register schedules OnInit work via OnInitAppend to scan prompt directories
 // and register one command per .md file found.
 func Register(e *sdk.Extension) {

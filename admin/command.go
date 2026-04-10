@@ -9,7 +9,7 @@ import (
 )
 
 // configCommand returns a handler for the /config command with subcommand routing.
-func configCommand(version string, m messenger) func(context.Context, string) error {
+func configCommand(m messenger) func(context.Context, string) error {
 	return func(_ context.Context, args string) error {
 		parts := strings.Fields(args)
 		if len(parts) == 0 {
@@ -33,7 +33,7 @@ func configCommand(version string, m messenger) func(context.Context, string) er
 			filename := strings.Join(parts[1:], " ")
 			handleConfigRead(m, filename)
 		case "--version", "-v":
-			m.ShowMessage(fmt.Sprintf("admin v%s", version))
+			m.ShowMessage(fmt.Sprintf("admin v%s", Version))
 		default:
 			m.ShowMessage("Usage: /config [setup|list|read <file>|--version]\nUnknown argument: " + sub)
 		}

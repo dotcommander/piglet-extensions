@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	e := sdk.New("safeguard", "0.2.0")
+	e := sdk.New("safeguard", safeguard.Version)
 	safeguard.Register(e)
 	e.Run()
 }

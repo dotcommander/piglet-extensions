@@ -17,6 +17,8 @@ import (
 //go:embed defaults/prompt.md
 var defaultPrompt string
 
+const Version = "0.1.0"
+
 // Register adds rtk's interceptor and prompt section to the extension.
 // If the rtk binary is not found in PATH, registration is skipped entirely.
 func Register(e *sdk.Extension) {

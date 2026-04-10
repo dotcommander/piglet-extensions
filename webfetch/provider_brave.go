@@ -2,12 +2,10 @@ package webfetch
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 // BraveProvider implements SearchProvider using the Brave Search API.
@@ -27,7 +25,7 @@ func NewBraveProvider(apiKey string, cfg BraveConfig) *BraveProvider {
 	return &BraveProvider{
 		searchURL: cfg.SearchURL,
 		apiKey:    apiKey,
-		http:      &http.Client{Timeout: 30 * time.Second},
+		http:      &http.Client{Timeout: fetchTimeout},
 	}
 }
 
@@ -35,7 +33,7 @@ func (b *BraveProvider) Name() string { return "brave" }
 
 func (b *BraveProvider) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
 	if limit <= 0 {
-		limit = 5
+		limit = defaultSearchLimit
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
@@ -50,19 +48,9 @@ func (b *BraveProvider) Search(ctx context.Context, query string, limit int) ([]
 	req.Header.Set("X-Subscription-Token", b.apiKey)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := b.http.Do(req)
-	if err != nil {
-		return nil, &HTTPError{URL: searchURL, StatusCode: 0, Err: err}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, &HTTPError{URL: searchURL, StatusCode: resp.StatusCode}
-	}
-
 	var envelope braveSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+	if err := doJSONRequest(b.http, req, &envelope); err != nil {
+		return nil, err
 	}
 
 	items := envelope.Web.Results
