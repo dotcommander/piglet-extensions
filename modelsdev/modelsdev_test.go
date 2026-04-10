@@ -15,6 +15,7 @@ import (
 )
 
 func TestFetchOverrides_BuildsCorrectKeys(t *testing.T) {
+	// t.Parallel() not used: t.Setenv modifies process-wide state.
 	apiResp := apiResponse{
 		"openai": providerData{ID: "openai", Models: map[string]modelData{
 			"gpt-4o": {ID: "gpt-4o", Name: "GPT-4o", Limit: modelLimit{Context: 128000, Output: 16384}},
@@ -45,6 +46,7 @@ func TestFetchOverrides_BuildsCorrectKeys(t *testing.T) {
 }
 
 func TestFetchOverrides_WritesCache(t *testing.T) {
+	// t.Parallel() not used: t.Setenv modifies process-wide state.
 	apiResp := apiResponse{
 		"openai": providerData{ID: "openai", Models: map[string]modelData{
 			"gpt-4o": {ID: "gpt-4o", Name: "GPT-4o", Limit: modelLimit{Context: 128000, Output: 16384}},
@@ -62,11 +64,13 @@ func TestFetchOverrides_WritesCache(t *testing.T) {
 }
 
 func TestCacheStale_Missing(t *testing.T) {
+	// t.Parallel() not used: t.Setenv modifies process-wide state.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	assert.True(t, CacheStale())
 }
 
 func TestCacheStale_Fresh(t *testing.T) {
+	// t.Parallel() not used: t.Setenv modifies process-wide state.
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	pigletDir := filepath.Join(dir, "piglet")
@@ -80,6 +84,7 @@ func TestCacheStale_Fresh(t *testing.T) {
 }
 
 func TestCacheStale_Expired(t *testing.T) {
+	// t.Parallel() not used: t.Setenv modifies process-wide state.
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	pigletDir := filepath.Join(dir, "piglet")

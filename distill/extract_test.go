@@ -144,38 +144,38 @@ func TestWriteSkillNoFrontmatter(t *testing.T) {
 	assert.Contains(t, body, content)
 }
 
-func TestIsAssistantWithError(t *testing.T) {
+func TestAssistantTextContainsError(t *testing.T) {
 	t.Parallel()
 
 	t.Run("assistant with error in text block", func(t *testing.T) {
 		t.Parallel()
 		raw := json.RawMessage(`{"role":"assistant","content":[{"type":"text","text":"got an error"},{"type":"tool_use","name":"read_file","input":{}}]}`)
-		assert.True(t, isAssistantWithError(raw))
+		assert.True(t, assistantTextContainsError(raw))
 	})
 
 	t.Run("assistant with error in string content", func(t *testing.T) {
 		t.Parallel()
 		raw := json.RawMessage(`{"role":"assistant","content":"Error: file not found"}`)
-		assert.True(t, isAssistantWithError(raw))
+		assert.True(t, assistantTextContainsError(raw))
 	})
 
 	t.Run("assistant with tool name containing error is not a match", func(t *testing.T) {
 		t.Parallel()
 		// Tool name contains "error" but text does not — should NOT match.
 		raw := json.RawMessage(`{"role":"assistant","content":[{"type":"tool_use","name":"error_handler","input":{}}]}`)
-		assert.False(t, isAssistantWithError(raw))
+		assert.False(t, assistantTextContainsError(raw))
 	})
 
 	t.Run("assistant without error", func(t *testing.T) {
 		t.Parallel()
 		raw := json.RawMessage(`{"role":"assistant","content":"all good"}`)
-		assert.False(t, isAssistantWithError(raw))
+		assert.False(t, assistantTextContainsError(raw))
 	})
 
 	t.Run("non-assistant role", func(t *testing.T) {
 		t.Parallel()
 		raw := json.RawMessage(`{"role":"user","content":"got an error"}`)
-		assert.False(t, isAssistantWithError(raw))
+		assert.False(t, assistantTextContainsError(raw))
 	})
 }
 

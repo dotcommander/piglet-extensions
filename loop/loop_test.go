@@ -9,15 +9,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func init() {
-	// Lower the minimum interval so tests complete quickly.
-	MinInterval = 10 * time.Millisecond
+const testMinInterval = 10 * time.Millisecond
+
+func newTestScheduler() *Scheduler {
+	return &Scheduler{MinInterval: testMinInterval}
 }
 
 func TestStartValid(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{}
+	s := newTestScheduler()
 	ticked := make(chan int, 1)
 
 	err := s.Start(50*time.Millisecond, "hello", func(iter int, _ string) {
@@ -37,7 +38,7 @@ func TestStartValid(t *testing.T) {
 func TestStartTooShortInterval(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{}
+	s := newTestScheduler()
 	err := s.Start(1*time.Millisecond, "hello", func(_ int, _ string) {})
 	assert.ErrorContains(t, err, "interval must be at least")
 }
@@ -45,7 +46,7 @@ func TestStartTooShortInterval(t *testing.T) {
 func TestStartWhileAlreadyRunning(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{}
+	s := newTestScheduler()
 	require.NoError(t, s.Start(50*time.Millisecond, "first", func(_ int, _ string) {}))
 	defer s.Stop()
 
@@ -56,7 +57,7 @@ func TestStartWhileAlreadyRunning(t *testing.T) {
 func TestStopWhenRunning(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{}
+	s := newTestScheduler()
 	started := make(chan struct{})
 
 	require.NoError(t, s.Start(50*time.Millisecond, "test", func(_ int, _ string) {
@@ -83,7 +84,7 @@ func TestStopWhenRunning(t *testing.T) {
 func TestStopWhenNotRunning(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{}
+	s := newTestScheduler()
 	stopped := s.Stop()
 	assert.False(t, stopped)
 }
@@ -91,7 +92,7 @@ func TestStopWhenNotRunning(t *testing.T) {
 func TestStatusReflectsState(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{}
+	s := newTestScheduler()
 
 	running, interval, prompt, iters := s.Status()
 	assert.False(t, running)
@@ -111,7 +112,7 @@ func TestStatusReflectsState(t *testing.T) {
 func TestOnTickCalledMultipleTimes(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{}
+	s := newTestScheduler()
 	var count atomic.Int32
 	done := make(chan struct{})
 
@@ -137,7 +138,7 @@ func TestOnTickCalledMultipleTimes(t *testing.T) {
 func TestStopPreventsAdditionalTicks(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{}
+	s := newTestScheduler()
 	var count atomic.Int32
 
 	require.NoError(t, s.Start(20*time.Millisecond, "ping", func(_ int, _ string) {
@@ -157,7 +158,7 @@ func TestStopPreventsAdditionalTicks(t *testing.T) {
 func TestRestartAfterStop(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{}
+	s := newTestScheduler()
 	ticked := make(chan struct{}, 1)
 
 	require.NoError(t, s.Start(50*time.Millisecond, "first", func(_ int, _ string) {}))

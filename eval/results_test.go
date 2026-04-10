@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,7 @@ func writeResultToDir(t *testing.T, dir string, r *RunResult) string {
 	data, err := json.Marshal(r)
 	require.NoError(t, err)
 	ts := r.RanAt.UTC().Format("20060102-150405")
-	name := sanitizeName(r.Suite) + "-" + ts + ".json"
+	name := xdg.SanitizeFilename(r.Suite) + "-" + ts + ".json"
 	path := filepath.Join(dir, name)
 	require.NoError(t, os.WriteFile(path, data, 0o600))
 	return path
