@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/dotcommander/piglet/sdk"
@@ -34,14 +33,26 @@ func registerCommands(e *sdk.Extension) {
 			sub := strings.TrimSpace(args)
 			switch {
 			case sub == "" || sub == "list":
-				return handleEvalList(e)
+				text, err := listSuitesText(e)
+				showOrError(e, err, text)
 			case strings.HasPrefix(sub, "run "):
-				return handleEvalRun(ctx, e, strings.TrimPrefix(sub, "run "))
+				text, err := runSuite(ctx, e, strings.TrimSpace(strings.TrimPrefix(sub, "run ")), nil)
+				showOrError(e, err, text)
 			case strings.HasPrefix(sub, "results"):
 				filter := strings.TrimSpace(strings.TrimPrefix(sub, "results"))
-				return handleEvalResults(e, filter)
+				showEvalResults(e, filter)
 			case strings.HasPrefix(sub, "compare "):
-				return handleEvalCompare(e, strings.TrimPrefix(sub, "compare "))
+				parts := strings.Fields(strings.TrimPrefix(sub, "compare "))
+				if len(parts) < 2 {
+					e.ShowMessage("Usage: /eval compare <path1> <path2>")
+					return nil
+				}
+				text, err := compareResults(parts[0], parts[1])
+				if err != nil {
+					e.ShowMessage("Error: " + err.Error())
+					return nil
+				}
+				e.ShowMessage("```\n" + text + "```")
 			default:
 				e.ShowMessage("Usage: /eval [run <suite>|list|results [suite]|compare <path1> <path2>]")
 			}
@@ -50,67 +61,11 @@ func registerCommands(e *sdk.Extension) {
 	})
 }
 
-func handleEvalList(e *sdk.Extension) error {
-	dir, err := suitesDir()
-	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
-		return nil
-	}
-	summaries, err := ListSuites(dir)
-	if err != nil {
-		e.ShowMessage("Error listing suites: " + err.Error())
-		return nil
-	}
-	if len(summaries) == 0 {
-		e.ShowMessage("No evaluation suites found in " + dir)
-		return nil
-	}
-	var b strings.Builder
-	b.WriteString("**Evaluation Suites**\n\n")
-	for _, s := range summaries {
-		fmt.Fprintf(&b, "- **%s** — %s (%d cases)\n  `%s`\n", s.Name, s.Description, s.CaseCount, s.Path)
-	}
-	e.ShowMessage(b.String())
-	return nil
-}
-
-func handleEvalRun(ctx context.Context, e *sdk.Extension, args string) error {
-	suiteName := strings.TrimSpace(args)
-	if suiteName == "" {
-		e.ShowMessage("Usage: /eval run <suite-name>")
-		return nil
-	}
-	dir, err := suitesDir()
-	if err != nil {
-		e.ShowMessage("Error: " + err.Error())
-		return nil
-	}
-	path := filepath.Join(dir, suiteName+".yaml")
-	suite, err := LoadSuite(path)
-	if err != nil {
-		e.ShowMessage("Error loading suite: " + err.Error())
-		return nil
-	}
-	e.ShowMessage(fmt.Sprintf("Running suite **%s** (%d cases)...", suite.Name, len(suite.Cases)))
-	runner := NewRunner(e)
-	result, err := runner.Run(ctx, suite, nil)
-	if err != nil {
-		e.ShowMessage("Error running suite: " + err.Error())
-		return nil
-	}
-	saved, err := SaveResult(result)
-	if err != nil {
-		e.ShowMessage("Warning: could not save results: " + err.Error())
-	}
-	e.ShowMessage(formatRunSummary(result, saved))
-	return nil
-}
-
-func handleEvalResults(e *sdk.Extension, suiteFilter string) error {
+func showEvalResults(e *sdk.Extension, suiteFilter string) {
 	summaries, err := ListResults(suiteFilter)
 	if err != nil {
 		e.ShowMessage("Error: " + err.Error())
-		return nil
+		return
 	}
 	if len(summaries) == 0 {
 		msg := "No results found."
@@ -118,7 +73,7 @@ func handleEvalResults(e *sdk.Extension, suiteFilter string) error {
 			msg = fmt.Sprintf("No results found for suite %q.", suiteFilter)
 		}
 		e.ShowMessage(msg)
-		return nil
+		return
 	}
 	var b strings.Builder
 	b.WriteString("**Evaluation Results**\n\n")
@@ -127,28 +82,6 @@ func handleEvalResults(e *sdk.Extension, suiteFilter string) error {
 			s.Suite, s.RanAt.Format("2006-01-02 15:04"), s.Passed, s.Total, s.Path)
 	}
 	e.ShowMessage(b.String())
-	return nil
-}
-
-func handleEvalCompare(e *sdk.Extension, args string) error {
-	parts := strings.Fields(args)
-	if len(parts) < 2 {
-		e.ShowMessage("Usage: /eval compare <path1> <path2>")
-		return nil
-	}
-	a, err := LoadResult(parts[0])
-	if err != nil {
-		e.ShowMessage("Error loading first result: " + err.Error())
-		return nil
-	}
-	b, err := LoadResult(parts[1])
-	if err != nil {
-		e.ShowMessage("Error loading second result: " + err.Error())
-		return nil
-	}
-	comp := Compare(a, b)
-	e.ShowMessage("```\n" + comp.Format() + "```")
-	return nil
 }
 
 func registerTools(e *sdk.Extension) {
@@ -183,7 +116,7 @@ func registerTools(e *sdk.Extension) {
 			"properties": map[string]any{},
 		},
 		Execute: func(_ context.Context, _ map[string]any) (*sdk.ToolResult, error) {
-			return toolEvalList()
+			return toolEvalList(e)
 		},
 	})
 
@@ -225,43 +158,19 @@ func toolEvalRun(ctx context.Context, e *sdk.Extension, args map[string]any) (*s
 		}
 	}
 
-	dir, err := suitesDir()
+	text, err := runSuite(ctx, e, suiteName, caseFilter)
 	if err != nil {
-		return sdk.ErrorResult("resolve suites dir: " + err.Error()), nil
+		return sdk.ErrorResult(err.Error()), nil
 	}
-
-	suite, err := LoadSuite(filepath.Join(dir, suiteName+".yaml"))
-	if err != nil {
-		return sdk.ErrorResult("load suite: " + err.Error()), nil
-	}
-
-	runner := NewRunner(e)
-	result, err := runner.Run(ctx, suite, caseFilter)
-	if err != nil {
-		return sdk.ErrorResult("run suite: " + err.Error()), nil
-	}
-
-	saved, _ := SaveResult(result)
-	return sdk.TextResult(formatRunSummary(result, saved)), nil
+	return sdk.TextResult(text), nil
 }
 
-func toolEvalList() (*sdk.ToolResult, error) {
-	dir, err := suitesDir()
+func toolEvalList(e *sdk.Extension) (*sdk.ToolResult, error) {
+	text, err := listSuitesText(e)
 	if err != nil {
-		return sdk.ErrorResult("resolve suites dir: " + err.Error()), nil
+		return sdk.ErrorResult(err.Error()), nil
 	}
-	summaries, err := ListSuites(dir)
-	if err != nil {
-		return sdk.ErrorResult("list suites: " + err.Error()), nil
-	}
-	if len(summaries) == 0 {
-		return sdk.TextResult("No evaluation suites found."), nil
-	}
-	var b strings.Builder
-	for _, s := range summaries {
-		fmt.Fprintf(&b, "%s: %s (%d cases) — %s\n", s.Name, s.Description, s.CaseCount, s.Path)
-	}
-	return sdk.TextResult(b.String()), nil
+	return sdk.TextResult(text), nil
 }
 
 func toolEvalCompare(args map[string]any) (*sdk.ToolResult, error) {
@@ -270,16 +179,20 @@ func toolEvalCompare(args map[string]any) (*sdk.ToolResult, error) {
 	if pathA == "" || pathB == "" {
 		return sdk.ErrorResult("run_a and run_b are required"), nil
 	}
-	a, err := LoadResult(pathA)
+	text, err := compareResults(pathA, pathB)
 	if err != nil {
-		return sdk.ErrorResult("load run_a: " + err.Error()), nil
+		return sdk.ErrorResult(err.Error()), nil
 	}
-	b, err := LoadResult(pathB)
+	return sdk.TextResult(text), nil
+}
+
+// showOrError displays text or an error message via ShowMessage.
+func showOrError(e *sdk.Extension, err error, text string) {
 	if err != nil {
-		return sdk.ErrorResult("load run_b: " + err.Error()), nil
+		e.ShowMessage("Error: " + err.Error())
+		return
 	}
-	comp := Compare(a, b)
-	return sdk.TextResult(comp.Format()), nil
+	e.ShowMessage(text)
 }
 
 func formatRunSummary(result *RunResult, savedPath string) string {

@@ -307,115 +307,37 @@ func Register(e *sdk.Extension, version string) {
 
 // mergeLearnedIntoRegistry adds learned triggers and anti-triggers to matching
 // registry components. Learned triggers extend existing Keywords; anti-triggers
-// would need scorer support (deferred — currently just extends keywords for now).
+// extend AntiTriggers.
 func mergeLearnedIntoRegistry(reg *Registry, lt *LearnedTriggers) {
 	if lt == nil {
 		return
 	}
 	for i := range reg.Components {
 		comp := &reg.Components[i]
-		key := comp.Name
-
-		// Merge learned triggers into keywords
-		if triggers, ok := lt.Triggers[key]; ok {
-			comp.Keywords = dedupStrings(append(comp.Keywords, triggers...))
-		}
-		if comp.Extension != "" && comp.Extension != key {
-			if triggers, ok := lt.Triggers[comp.Extension]; ok {
-				comp.Keywords = dedupStrings(append(comp.Keywords, triggers...))
-			}
-		}
-
-		// Merge learned anti-triggers
-		if anti, ok := lt.AntiTriggers[key]; ok {
-			comp.AntiTriggers = dedupStrings(append(comp.AntiTriggers, anti...))
-		}
-		if comp.Extension != "" && comp.Extension != key {
-			if anti, ok := lt.AntiTriggers[comp.Extension]; ok {
-				comp.AntiTriggers = dedupStrings(append(comp.AntiTriggers, anti...))
-			}
-		}
+		keys := componentKeys(comp)
+		comp.Keywords = mergeField(comp.Keywords, keys, lt.Triggers)
+		comp.AntiTriggers = mergeField(comp.AntiTriggers, keys, lt.AntiTriggers)
 	}
 }
 
-func truncatePrompt(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
+// componentKeys returns the lookup keys for a component: its Name and Extension (if different).
+func componentKeys(comp *Component) []string {
+	if comp.Extension != "" && comp.Extension != comp.Name {
+		return []string{comp.Name, comp.Extension}
 	}
-	return string(runes[:maxLen]) + "..."
+	return []string{comp.Name}
 }
 
-// FormatRouteResult formats a route result for human display.
-func FormatRouteResult(r RouteResult) string {
-	var b strings.Builder
-
-	fmt.Fprintf(&b, "Intent: %s", r.Intent.Primary)
-	if r.Intent.Secondary != "" {
-		fmt.Fprintf(&b, " + %s", r.Intent.Secondary)
-	}
-	if r.Intent.Confidence > 0 {
-		fmt.Fprintf(&b, " (%.0f%%)", r.Intent.Confidence*100)
-	}
-	b.WriteByte('\n')
-
-	if len(r.Domains) > 0 {
-		fmt.Fprintf(&b, "Domains: %s\n", strings.Join(r.Domains, ", "))
-	}
-
-	fmt.Fprintf(&b, "Confidence: %.2f\n", r.Confidence)
-
-	if len(r.Primary) > 0 {
-		b.WriteString("\nPrimary:\n")
-		for _, sc := range r.Primary {
-			fmt.Fprintf(&b, "  %s (%s) — %.2f", sc.Name, sc.Type, sc.Score)
-			if len(sc.Matched) > 0 {
-				fmt.Fprintf(&b, " [%s]", strings.Join(sc.Matched, ", "))
-			}
-			b.WriteByte('\n')
+// mergeField appends any learned entries matching keys, deduplicating the result.
+func mergeField(existing []string, keys []string, learned map[string][]string) []string {
+	var added []string
+	for _, k := range keys {
+		if vals, ok := learned[k]; ok {
+			added = append(added, vals...)
 		}
 	}
-
-	if len(r.Secondary) > 0 {
-		b.WriteString("\nSecondary:\n")
-		for _, sc := range r.Secondary {
-			fmt.Fprintf(&b, "  %s (%s) — %.2f\n", sc.Name, sc.Type, sc.Score)
-		}
+	if len(added) == 0 {
+		return existing
 	}
-
-	return b.String()
-}
-
-// FormatHookContext formats routing results for injection into conversation context.
-// Kept concise to minimize token overhead.
-func FormatHookContext(r RouteResult) string {
-	if len(r.Primary) == 0 {
-		return ""
-	}
-
-	var b strings.Builder
-	b.WriteString("[routing: ")
-
-	if r.Intent.Primary != "" {
-		b.WriteString("intent=")
-		b.WriteString(r.Intent.Primary)
-	}
-
-	if len(r.Domains) > 0 {
-		if r.Intent.Primary != "" {
-			b.WriteString(" | ")
-		}
-		b.WriteString("domains=")
-		b.WriteString(strings.Join(r.Domains, ","))
-	}
-
-	b.WriteString(" | relevant: ")
-	names := make([]string, 0, len(r.Primary))
-	for _, sc := range r.Primary {
-		names = append(names, sc.Name)
-	}
-	b.WriteString(strings.Join(names, ", "))
-
-	b.WriteString("]")
-	return b.String()
+	return dedupStrings(append(existing, added...))
 }

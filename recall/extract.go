@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 )
 
 // ExtractSessionText reads a session JSONL file and returns concatenated
@@ -82,7 +83,7 @@ func extractEntryText(data json.RawMessage) string {
 		return ""
 	}
 
-	role := strings.Title(msg.Role) //nolint:staticcheck // acceptable for display
+	role := titleCase(msg.Role)
 	return role + ": " + text + "\n"
 }
 
@@ -118,4 +119,15 @@ func extractTextContent(raw json.RawMessage) string {
 		// tool_use and tool_result blocks are intentionally skipped
 	}
 	return strings.Join(parts, " ")
+}
+
+// titleCase uppercases the first letter of s. Replaces deprecated strings.Title
+// which doesn't handle Unicode correctly and is overkill for ASCII role names.
+func titleCase(s string) string {
+	if s == "" {
+		return s
+	}
+	runes := []rune(s)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }

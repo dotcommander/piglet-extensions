@@ -9,8 +9,41 @@ import (
 //go:embed defaults/mode-propose.md
 var modeProposeMD string
 
+// statusMarker returns the markdown checkbox marker for a step status.
+func statusMarker(status string) byte {
+	switch status {
+	case StatusDone:
+		return 'x'
+	case StatusInProgress:
+		return '>'
+	case StatusSkipped:
+		return '-'
+	case StatusFailed:
+		return '!'
+	}
+	return ' '
+}
+
+// formatStep renders a single step as a markdown line.
+func formatStep(s Step, showID bool) string {
+	var b strings.Builder
+	marker := statusMarker(s.Status)
+	if showID {
+		fmt.Fprintf(&b, "- [%c] %d. %s", marker, s.ID, s.Text)
+	} else {
+		fmt.Fprintf(&b, "- [%c] %s", marker, s.Text)
+	}
+	if s.CommitSHA != "" {
+		fmt.Fprintf(&b, " (%s)", ShortSHA(s.CommitSHA))
+	}
+	b.WriteByte('\n')
+	if s.Notes != "" {
+		fmt.Fprintf(&b, "  - %s\n", s.Notes)
+	}
+	return b.String()
+}
+
 // FormatPrompt renders the plan for injection into the system prompt.
-// Uses the same markdown format as plan.md but with extra status info.
 func FormatPrompt(p *Plan) string {
 	if p == nil {
 		return ""
@@ -31,27 +64,7 @@ func FormatPrompt(p *Plan) string {
 	}
 
 	for _, s := range p.Steps {
-		marker := " "
-		switch s.Status {
-		case StatusDone:
-			marker = "x"
-		case StatusInProgress:
-			marker = ">"
-		case StatusSkipped:
-			marker = "-"
-		case StatusFailed:
-			marker = "!"
-		}
-
-		fmt.Fprintf(&b, "- [%s] %d. %s", marker, s.ID, s.Text)
-		if s.CommitSHA != "" {
-			fmt.Fprintf(&b, " (%s)", ShortSHA(s.CommitSHA))
-		}
-		b.WriteByte('\n')
-
-		if s.Notes != "" {
-			fmt.Fprintf(&b, "  - %s\n", s.Notes)
-		}
+		b.WriteString(formatStep(s, true))
 	}
 
 	done, total := p.Progress()

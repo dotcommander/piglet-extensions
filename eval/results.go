@@ -54,7 +54,7 @@ func SaveResult(result *RunResult) (string, error) {
 	}
 
 	ts := result.RanAt.UTC().Format("20060102-150405")
-	name := fmt.Sprintf("%s-%s.json", sanitizeName(result.Suite), ts)
+	name := fmt.Sprintf("%s-%s.json", xdg.SanitizeFilename(result.Suite), ts)
 	path := filepath.Join(dir, name)
 
 	data, err := json.Marshal(result)
@@ -172,17 +172,4 @@ func passStr(p bool) string {
 		return "pass"
 	}
 	return "FAIL"
-}
-
-// sanitizeName replaces characters unsafe for filenames with hyphens.
-func sanitizeName(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if r == '/' || r == '\\' || r == ':' || r == '*' || r == '?' || r == '"' || r == '<' || r == '>' || r == '|' || r == ' ' {
-			b.WriteRune('-')
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }

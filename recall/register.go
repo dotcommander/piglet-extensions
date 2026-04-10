@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,7 +107,7 @@ func registerCommand(e *sdk.Extension) {
 			case sub == "rebuild":
 				return handleRebuild(ctx, e)
 			case sub != "":
-				return handleSearch(ctx, e, sub)
+				return handleSearch(e, sub)
 			default:
 				e.ShowMessage("Usage: /recall <query> | /recall rebuild | /recall stats")
 			}
@@ -183,20 +184,14 @@ func registerHook(e *sdk.Extension) {
 				return "", nil
 			}
 
-			label := top.Title
-			if label == "" {
-				label = top.SessionID
-				if len(label) > 8 {
-					label = label[:8]
-				}
-			}
+			label := formatLabel(top)
 			return fmt.Sprintf("# Prior Context (session: %s)\n\n%s", label, excerpt), nil
 		},
 	})
 }
 
 // handleSearch executes a /recall <query> command.
-func handleSearch(_ context.Context, e *sdk.Extension, query string) error {
+func handleSearch(e *sdk.Extension, query string) error {
 	if idx == nil {
 		e.ShowMessage("recall index not available")
 		return nil
@@ -211,17 +206,10 @@ func handleSearch(_ context.Context, e *sdk.Extension, query string) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Recall: %q (%d results)\n\n", query, len(results))
 	for i, r := range results {
-		label := r.Title
-		if label == "" {
-			label = r.SessionID
-			if len(label) > 8 {
-				label = label[:8]
-			}
-		}
-		fmt.Fprintf(&b, "%d. %s (score: %.4f)\n", i+1, label, r.Score)
+		fmt.Fprintf(&b, "%d. %s (score: %.4f)\n", i+1, formatLabel(r), r.Score)
 		excerpt := readExcerpt(r.Path, searchExcerptLen)
 		if excerpt != "" {
-			fmt.Fprintf(&b, "   %s\n", strings.ReplaceAll(strings.TrimSpace(excerpt), "\n", " "))
+			fmt.Fprintf(&b, "   %s\n", formatExcerpt(excerpt))
 		}
 	}
 	e.ShowMessage(b.String())
@@ -238,12 +226,19 @@ func handleRebuild(ctx context.Context, e *sdk.Extension) error {
 
 	fresh := NewIndex(500)
 	count := 0
+	failed := 0
 	for _, s := range sessions {
 		if s.Path == "" {
 			continue
 		}
 		text, err := ExtractSessionText(s.Path, maxExtractBytes)
-		if err != nil || text == "" {
+		if err != nil {
+			slog.Debug("recall: extract session", "id", s.ID, "err", err)
+			failed++
+			continue
+		}
+		if text == "" {
+			failed++
 			continue
 		}
 		fresh.AddDocument(s.ID, s.Path, s.Title, text)
@@ -259,7 +254,11 @@ func handleRebuild(ctx context.Context, e *sdk.Extension) error {
 	}
 
 	docs, terms := idx.Stats()
-	e.ShowMessage(fmt.Sprintf("Rebuild complete: %d sessions indexed, %d unique terms", docs, terms))
+	msg := fmt.Sprintf("Rebuild complete: %d sessions indexed, %d unique terms", docs, terms)
+	if failed > 0 {
+		msg += fmt.Sprintf(" (%d failed)", failed)
+	}
+	e.ShowMessage(msg)
 	return nil
 }
 
@@ -290,63 +289,11 @@ func resolveSessionMeta(ctx context.Context, e *sdk.Extension, sessionID string)
 }
 
 // formatMessagesText converts EventAgentEnd messages to a plain text string.
+// Reuses extractEntryText to avoid duplicating the role/content parsing.
 func formatMessagesText(messages []json.RawMessage) string {
 	var b strings.Builder
 	for _, raw := range messages {
-		var msg struct {
-			Role    string          `json:"role"`
-			Content json.RawMessage `json:"content"`
-		}
-		if json.Unmarshal(raw, &msg) != nil || msg.Role == "" {
-			continue
-		}
-		text := extractTextContent(msg.Content)
-		if text == "" {
-			continue
-		}
-		role := strings.Title(msg.Role) //nolint:staticcheck // acceptable for display
-		fmt.Fprintf(&b, "%s: %s\n", role, text)
+		b.WriteString(extractEntryText(raw))
 	}
 	return b.String()
-}
-
-// buildResultsText formats search results as a readable string.
-func buildResultsText(results []SearchResult) string {
-	var b strings.Builder
-	for i, r := range results {
-		label := r.Title
-		if label == "" {
-			label = r.SessionID
-			if len(label) > 8 {
-				label = label[:8]
-			}
-		}
-		fmt.Fprintf(&b, "%d. %s (score: %.4f)\n", i+1, label, r.Score)
-		excerpt := readExcerpt(r.Path, searchExcerptLen)
-		if excerpt != "" {
-			fmt.Fprintf(&b, "   %s\n", strings.ReplaceAll(strings.TrimSpace(excerpt), "\n", " "))
-		}
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
-
-// readExcerpt reads the first maxChars characters of text from the session file.
-func readExcerpt(path string, maxChars int) string {
-	if path == "" {
-		return ""
-	}
-	text, err := ExtractSessionText(path, maxChars*4) // bytes approx
-	if err != nil {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) > maxChars {
-		return string(runes[:maxChars])
-	}
-	return text
-}
-
-// wordCount returns the approximate number of words in s.
-func wordCount(s string) int {
-	return len(strings.Fields(s))
 }

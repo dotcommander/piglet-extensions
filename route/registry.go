@@ -2,6 +2,7 @@ package route
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,7 +62,10 @@ func BuildRegistry(ctx context.Context, ext *sdk.Extension) (*Registry, error) {
 	}
 
 	// Get extensions directory for manifest scanning
-	extDir, _ := ext.ExtensionsDir(ctx)
+	extDir, err := ext.ExtensionsDir(ctx)
+	if err != nil {
+		slog.Debug("route: extensions dir", "err", err)
+	}
 
 	for _, info := range extInfos {
 		if info.Name == "route" {
@@ -144,7 +148,9 @@ func loadManifest(extDir, name string) manifestMeta {
 		return manifestMeta{}
 	}
 	var m manifestMeta
-	_ = yaml.Unmarshal(data, &m)
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		slog.Debug("route: parse manifest", "name", name, "err", err)
+	}
 	return m
 }
 

@@ -27,6 +27,14 @@ type LearnedTriggers struct {
 	AntiTriggers map[string][]string `json:"anti_triggers"` // component -> anti-trigger tokens
 }
 
+// newLearnedTriggers returns a zero-value LearnedTriggers with initialized maps.
+func newLearnedTriggers() *LearnedTriggers {
+	return &LearnedTriggers{
+		Triggers:     make(map[string][]string),
+		AntiTriggers: make(map[string][]string),
+	}
+}
+
 // FeedbackStore manages feedback recording and learned trigger generation.
 type FeedbackStore struct {
 	dir string
@@ -84,19 +92,13 @@ func (fs *FeedbackStore) Learn() (*LearnedTriggers, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &LearnedTriggers{
-				Triggers:     make(map[string][]string),
-				AntiTriggers: make(map[string][]string),
-			}, nil
+			return newLearnedTriggers(), nil
 		}
 		return nil, fmt.Errorf("open feedback: %w", err)
 	}
 	defer f.Close()
 
-	lt := &LearnedTriggers{
-		Triggers:     make(map[string][]string),
-		AntiTriggers: make(map[string][]string),
-	}
+	lt := newLearnedTriggers()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -135,18 +137,12 @@ func (fs *FeedbackStore) LoadLearned() *LearnedTriggers {
 	path := filepath.Join(fs.dir, "learned-triggers.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return &LearnedTriggers{
-			Triggers:     make(map[string][]string),
-			AntiTriggers: make(map[string][]string),
-		}
+		return newLearnedTriggers()
 	}
 
 	var lt LearnedTriggers
 	if err := json.Unmarshal(data, &lt); err != nil {
-		return &LearnedTriggers{
-			Triggers:     make(map[string][]string),
-			AntiTriggers: make(map[string][]string),
-		}
+		return newLearnedTriggers()
 	}
 	if lt.Triggers == nil {
 		lt.Triggers = make(map[string][]string)

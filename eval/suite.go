@@ -35,13 +35,6 @@ type SuiteSummary struct {
 	Path        string
 }
 
-var validScorers = map[string]bool{
-	"exact":    true,
-	"contains": true,
-	"regex":    true,
-	"judge":    true,
-}
-
 // LoadSuite reads and validates a suite from a YAML file.
 func LoadSuite(path string) (*Suite, error) {
 	data, err := os.ReadFile(path)
@@ -72,8 +65,8 @@ func validateSuite(s *Suite) error {
 		if c.Scorer == "" {
 			return fmt.Errorf("case %q: scorer is required", c.Name)
 		}
-		if !validScorers[c.Scorer] {
-			return fmt.Errorf("case %q: unknown scorer %q (valid: exact, contains, regex, judge)", c.Name, c.Scorer)
+		if _, err := NewScorer(c.Scorer, nil); err != nil {
+			return fmt.Errorf("case %q: %w", c.Name, err)
 		}
 		switch c.Scorer {
 		case "exact", "contains", "regex":

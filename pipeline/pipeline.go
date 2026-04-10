@@ -149,50 +149,34 @@ func (p *Pipeline) Validate(params map[string]string) error {
 		totalSteps += len(g)
 	}
 	names := make(map[string]bool, totalSteps)
-	for i, s := range p.Steps {
+	if err := validateStepList(p.Steps, "step", names); err != nil {
+		return err
+	}
+	for gi, group := range p.Parallel {
+		if err := validateStepList(group, fmt.Sprintf("parallel group %d step", gi), names); err != nil {
+			return err
+		}
+	}
+	if err := validateStepList(p.Finally, "finally step", names); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateStepList validates a slice of steps for naming, run commands, and format issues.
+func validateStepList(steps []Step, label string, names map[string]bool) error {
+	for i, s := range steps {
 		if s.Name == "" {
-			return fmt.Errorf("step %d has no name", i)
+			return fmt.Errorf("%s %d has no name", label, i)
 		}
 		if s.Run == "" {
-			return fmt.Errorf("step %q has no run command", s.Name)
+			return fmt.Errorf("%s %q has no run command", label, s.Name)
 		}
 		if names[s.Name] {
 			return fmt.Errorf("duplicate step name %q", s.Name)
 		}
 		names[s.Name] = true
 		if err := validateStepFormat(s.Name, s.OutputFormat); err != nil {
-			return err
-		}
-	}
-	for gi, group := range p.Parallel {
-		for i, step := range group {
-			if step.Name == "" {
-				return fmt.Errorf("parallel group %d step %d has no name", gi, i)
-			}
-			if step.Run == "" {
-				return fmt.Errorf("parallel step %q has no run command", step.Name)
-			}
-			if names[step.Name] {
-				return fmt.Errorf("parallel group %d has duplicate step name %q", gi, step.Name)
-			}
-			names[step.Name] = true
-			if err := validateStepFormat(step.Name, step.OutputFormat); err != nil {
-				return err
-			}
-		}
-	}
-	for _, step := range p.Finally {
-		if step.Name == "" {
-			return fmt.Errorf("finally step has no name")
-		}
-		if step.Run == "" {
-			return fmt.Errorf("finally step %q has no run command", step.Name)
-		}
-		if names[step.Name] {
-			return fmt.Errorf("finally has duplicate step name %q", step.Name)
-		}
-		names[step.Name] = true
-		if err := validateStepFormat(step.Name, step.OutputFormat); err != nil {
 			return err
 		}
 	}

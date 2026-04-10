@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 )
 
 // ServerConfig describes how to start a language server.
@@ -57,17 +56,20 @@ type Manager struct {
 	mu        sync.Mutex
 	clients   map[string]*Client // keyed by language ID
 	starting  map[string]bool    // languages currently being started
+	ready     *sync.Cond         // signaled when a server finishes starting
 	openFiles map[string]bool    // files already sent via didOpen
 }
 
 // NewManager creates a new server manager rooted at the given directory.
 func NewManager(cwd string) *Manager {
-	return &Manager{
+	m := &Manager{
 		cwd:       cwd,
 		clients:   make(map[string]*Client),
 		starting:  make(map[string]bool),
 		openFiles: make(map[string]bool),
 	}
+	m.ready = sync.NewCond(&m.mu)
+	return m
 }
 
 // CWD returns the root working directory (immutable).
@@ -80,32 +82,26 @@ func (m *Manager) ForFile(ctx context.Context, file string) (*Client, string, er
 		return nil, "", fmt.Errorf("unsupported file type: %s", filepath.Ext(file))
 	}
 
-	// Fast path: server already running
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Fast path: server already running
 	if c, ok := m.clients[lang]; ok {
-		m.mu.Unlock()
 		return c, lang, nil
 	}
 
 	// Wait for a server that's already starting
 	if m.starting[lang] {
-		for range 3 {
-			m.mu.Unlock()
-			time.Sleep(200 * time.Millisecond)
-			m.mu.Lock()
-			if client, ok := m.clients[lang]; ok {
-				m.mu.Unlock()
-				return client, lang, nil
-			}
-			if !m.starting[lang] {
-				break // startup failed, fall through to start new
-			}
+		for m.starting[lang] {
+			m.ready.Wait()
 		}
-		if m.starting[lang] {
-			m.mu.Unlock()
-			return nil, lang, fmt.Errorf("%s language server still starting after retries", lang)
+		// Check again — startup may have succeeded
+		if c, ok := m.clients[lang]; ok {
+			return c, lang, nil
 		}
+		return nil, lang, fmt.Errorf("%s language server failed to start", lang)
 	}
+
 	m.starting[lang] = true
 	m.mu.Unlock()
 
@@ -117,7 +113,7 @@ func (m *Manager) ForFile(ctx context.Context, file string) (*Client, string, er
 	if err == nil {
 		m.clients[lang] = c
 	}
-	m.mu.Unlock()
+	m.ready.Broadcast()
 
 	if err != nil {
 		return nil, lang, err
