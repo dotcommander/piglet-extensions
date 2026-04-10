@@ -30,7 +30,7 @@ func Register(e *sdk.Extension) {
 		Name:     "distill-auto",
 		Priority: 200,
 		Events:   []string{"EventAgentEnd"},
-		Handle: func(_ context.Context, _ string, data json.RawMessage) *sdk.Action {
+		Handle: func(ctx context.Context, _ string, data json.RawMessage) *sdk.Action {
 			var evt struct {
 				Messages []json.RawMessage `json:"Messages"`
 			}
@@ -43,9 +43,12 @@ func Register(e *sdk.Extension) {
 				return nil
 			}
 
+			// Fire-and-forget: uses handler ctx for best-effort cancellation on shutdown.
+			// Worst case if process exits first: no skill file written (safe — atomic writes
+			// via xdg.WriteFileAtomic prevent partial files).
 			messages := evt.Messages
 			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), chatTimeout)
+				ctx, cancel := context.WithTimeout(ctx, chatTimeout)
 				defer cancel()
 				path, err := distillSession(ctx, e, messages)
 				if err != nil {

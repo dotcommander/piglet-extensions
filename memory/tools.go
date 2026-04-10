@@ -23,11 +23,30 @@ func (rt *memoryRuntime) requireStore() (*Store, *sdk.ToolResult) {
 	return rt.store, nil
 }
 
-func (rt *memoryRuntime) toolSet() sdk.ToolDef {
+// toolDef creates a ToolDef with an automatic requireStore guard.
+func (rt *memoryRuntime) toolDef(name, desc string, params map[string]any, promptHint string,
+	exec func(ctx context.Context, s *Store, args map[string]any) (*sdk.ToolResult, error),
+) sdk.ToolDef {
 	return sdk.ToolDef{
-		Name:        "memory_set",
-		Description: "Save a key-value fact to project memory, with an optional category.",
-		Parameters: map[string]any{
+		Name:        name,
+		Description: desc,
+		Parameters:  params,
+		PromptHint:  promptHint,
+		Execute: func(ctx context.Context, args map[string]any) (*sdk.ToolResult, error) {
+			s, errResult := rt.requireStore()
+			if errResult != nil {
+				return errResult, nil
+			}
+			return exec(ctx, s, args)
+		},
+	}
+}
+
+func (rt *memoryRuntime) toolSet() sdk.ToolDef {
+	return rt.toolDef(
+		"memory_set",
+		"Save a key-value fact to project memory, with an optional category.",
+		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"key":      map[string]any{"type": "string", "description": "Memory key"},
@@ -36,12 +55,8 @@ func (rt *memoryRuntime) toolSet() sdk.ToolDef {
 			},
 			"required": []string{"key", "value"},
 		},
-		PromptHint: "Save a fact to project memory",
-		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			s, errResult := rt.requireStore()
-			if errResult != nil {
-				return errResult, nil
-			}
+		"Save a fact to project memory",
+		func(_ context.Context, s *Store, args map[string]any) (*sdk.ToolResult, error) {
 			key, _ := args["key"].(string)
 			value, _ := args["value"].(string)
 			category, _ := args["category"].(string)
@@ -53,26 +68,22 @@ func (rt *memoryRuntime) toolSet() sdk.ToolDef {
 			}
 			return sdk.TextResult("Saved: " + key), nil
 		},
-	}
+	)
 }
 
 func (rt *memoryRuntime) toolGet() sdk.ToolDef {
-	return sdk.ToolDef{
-		Name:        "memory_get",
-		Description: "Retrieve a fact from project memory by key.",
-		Parameters: map[string]any{
+	return rt.toolDef(
+		"memory_get",
+		"Retrieve a fact from project memory by key.",
+		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"key": map[string]any{"type": "string", "description": "Memory key to retrieve"},
 			},
 			"required": []string{"key"},
 		},
-		PromptHint: "Retrieve a fact from project memory",
-		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			s, errResult := rt.requireStore()
-			if errResult != nil {
-				return errResult, nil
-			}
+		"Retrieve a fact from project memory",
+		func(_ context.Context, s *Store, args map[string]any) (*sdk.ToolResult, error) {
 			key, _ := args["key"].(string)
 			fact, ok := s.Get(key)
 			if !ok {
@@ -80,26 +91,22 @@ func (rt *memoryRuntime) toolGet() sdk.ToolDef {
 			}
 			return sdk.TextResult(fact.Value), nil
 		},
-	}
+	)
 }
 
 func (rt *memoryRuntime) toolList() sdk.ToolDef {
-	return sdk.ToolDef{
-		Name:        "memory_list",
-		Description: "List all facts in project memory, optionally filtered by category.",
-		Parameters: map[string]any{
+	return rt.toolDef(
+		"memory_list",
+		"List all facts in project memory, optionally filtered by category.",
+		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"category": map[string]any{"type": "string", "description": "Optional category filter"},
 			},
 			"required": []string{},
 		},
-		PromptHint: "List all project memory facts",
-		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			s, errResult := rt.requireStore()
-			if errResult != nil {
-				return errResult, nil
-			}
+		"List all project memory facts",
+		func(_ context.Context, s *Store, args map[string]any) (*sdk.ToolResult, error) {
 			category, _ := args["category"].(string)
 			facts := s.List(category)
 			if len(facts) == 0 {
@@ -114,14 +121,14 @@ func (rt *memoryRuntime) toolList() sdk.ToolDef {
 			}
 			return sdk.TextResult(strings.TrimRight(b.String(), "\n")), nil
 		},
-	}
+	)
 }
 
 func (rt *memoryRuntime) toolRelate() sdk.ToolDef {
-	return sdk.ToolDef{
-		Name:        "memory_relate",
-		Description: "Create a bidirectional relation between two memory facts. Both keys must exist.",
-		Parameters: map[string]any{
+	return rt.toolDef(
+		"memory_relate",
+		"Create a bidirectional relation between two memory facts. Both keys must exist.",
+		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"key_a": map[string]any{"type": "string", "description": "First fact key"},
@@ -129,12 +136,8 @@ func (rt *memoryRuntime) toolRelate() sdk.ToolDef {
 			},
 			"required": []string{"key_a", "key_b"},
 		},
-		PromptHint: "Link two related facts in memory",
-		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			s, errResult := rt.requireStore()
-			if errResult != nil {
-				return errResult, nil
-			}
+		"Link two related facts in memory",
+		func(_ context.Context, s *Store, args map[string]any) (*sdk.ToolResult, error) {
 			keyA, _ := args["key_a"].(string)
 			keyB, _ := args["key_b"].(string)
 			if keyA == "" || keyB == "" {
@@ -145,14 +148,14 @@ func (rt *memoryRuntime) toolRelate() sdk.ToolDef {
 			}
 			return sdk.TextResult(fmt.Sprintf("Linked: %s ↔ %s", keyA, keyB)), nil
 		},
-	}
+	)
 }
 
 func (rt *memoryRuntime) toolRelated() sdk.ToolDef {
-	return sdk.ToolDef{
-		Name:        "memory_related",
-		Description: "Find all facts related to a key by traversing memory graph edges. Returns facts within the specified depth.",
-		Parameters: map[string]any{
+	return rt.toolDef(
+		"memory_related",
+		"Find all facts related to a key by traversing memory graph edges. Returns facts within the specified depth.",
+		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"key":       map[string]any{"type": "string", "description": "Starting fact key"},
@@ -160,12 +163,8 @@ func (rt *memoryRuntime) toolRelated() sdk.ToolDef {
 			},
 			"required": []string{"key"},
 		},
-		PromptHint: "Find related facts by traversing memory graph",
-		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			s, errResult := rt.requireStore()
-			if errResult != nil {
-				return errResult, nil
-			}
+		"Find related facts by traversing memory graph",
+		func(_ context.Context, s *Store, args map[string]any) (*sdk.ToolResult, error) {
 			key, _ := args["key"].(string)
 			if key == "" {
 				return sdk.ErrorResult("key is required"), nil
@@ -190,26 +189,22 @@ func (rt *memoryRuntime) toolRelated() sdk.ToolDef {
 			}
 			return sdk.TextResult(strings.TrimRight(b.String(), "\n")), nil
 		},
-	}
+	)
 }
 
 func (rt *memoryRuntime) toolDelete() sdk.ToolDef {
-	return sdk.ToolDef{
-		Name:        "memory_delete",
-		Description: "Delete a fact from project memory by key.",
-		Parameters: map[string]any{
+	return rt.toolDef(
+		"memory_delete",
+		"Delete a fact from project memory by key.",
+		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"key": map[string]any{"type": "string", "description": "Memory key to delete"},
 			},
 			"required": []string{"key"},
 		},
-		PromptHint: "Delete a fact from project memory",
-		Execute: func(_ context.Context, args map[string]any) (*sdk.ToolResult, error) {
-			s, errResult := rt.requireStore()
-			if errResult != nil {
-				return errResult, nil
-			}
+		"Delete a fact from project memory",
+		func(_ context.Context, s *Store, args map[string]any) (*sdk.ToolResult, error) {
 			key, _ := args["key"].(string)
 			if key == "" {
 				return sdk.ErrorResult("key is required"), nil
@@ -219,7 +214,7 @@ func (rt *memoryRuntime) toolDelete() sdk.ToolDef {
 			}
 			return sdk.TextResult("Deleted: " + key), nil
 		},
-	}
+	)
 }
 
 func (rt *memoryRuntime) toolStatus(version string) sdk.ToolDef {

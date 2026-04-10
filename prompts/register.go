@@ -4,6 +4,7 @@ package prompts
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -63,6 +64,9 @@ type promptEntry struct {
 func loadPromptDir(dir string, out map[string]promptEntry) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			slog.Debug("prompts: scan directory", "dir", dir, "err", err)
+		}
 		return
 	}
 	for _, e := range entries {
@@ -71,6 +75,7 @@ func loadPromptDir(dir string, out map[string]promptEntry) {
 		}
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
+			slog.Debug("prompts: read file", "file", e.Name(), "err", err)
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".md")
@@ -84,7 +89,7 @@ func loadPromptDir(dir string, out map[string]promptEntry) {
 
 // parsePromptFile splits optional YAML frontmatter from the markdown body.
 func parsePromptFile(data []byte) (description, body string) {
-	content := string(data)
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
 	if !strings.HasPrefix(content, "---\n") {
 		return "", strings.TrimSpace(content)
 	}
@@ -138,6 +143,7 @@ func expandTemplate(body string, args []string) string {
 
 	result = strings.ReplaceAll(result, "$@", strings.Join(args, " "))
 
+	// Replace $9..$1 in reverse order so "$1" doesn't corrupt "$10" patterns.
 	for i := 9; i >= 1; i-- {
 		placeholder := "$" + strconv.Itoa(i)
 		val := ""

@@ -20,6 +20,15 @@ const (
 	cacheMaxAge   = 24 * time.Hour
 )
 
+// httpClient is a shared client with sensible timeouts and connection pooling.
+var httpClient = &http.Client{
+	Timeout: 30 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConnsPerHost: 100,
+		IdleConnTimeout:     90 * time.Second,
+	},
+}
+
 // modelsdevConfig holds configurable settings for models.dev sync.
 type modelsdevConfig struct {
 	APIURL string `yaml:"api_url"`
@@ -110,7 +119,7 @@ func fetch(ctx context.Context, url string) (apiResponse, error) {
 	}
 	req.Header.Set("User-Agent", "piglet")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("http get: %w", err)
 	}

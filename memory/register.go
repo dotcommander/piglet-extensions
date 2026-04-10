@@ -47,7 +47,9 @@ func Register(e *sdk.Extension, version string) {
 			if rt.store != nil {
 				facts := rt.store.List(contextCategory)
 				for _, f := range facts {
-					_ = rt.store.Delete(f.Key)
+					if err := rt.store.Delete(f.Key); err != nil {
+						e.Log("warn", "memory context reset: "+err.Error())
+					}
 				}
 			}
 			return nil
@@ -60,7 +62,9 @@ func Register(e *sdk.Extension, version string) {
 		Events:   []string{"EventTurnEnd"},
 		Handle: func(_ context.Context, _ string, data json.RawMessage) *sdk.Action {
 			if rt.extractor != nil {
-				_ = rt.extractor.Extract(data)
+				if err := rt.extractor.Extract(data); err != nil {
+					e.Log("warn", "memory extract: "+err.Error())
+				}
 			}
 			return nil
 		},
@@ -164,7 +168,9 @@ func makeCompactHandler(ext *sdk.Extension, s *Store) func(ctx context.Context, 
 				"role":    "user",
 				"content": reinjectMsg,
 			})
-			if err == nil {
+			if err != nil {
+				ext.Log("warn", "memory reinject marshal: "+err.Error())
+			} else {
 				wire = append(wire, wireMsg{Type: "user", Data: reinjectData})
 			}
 		}

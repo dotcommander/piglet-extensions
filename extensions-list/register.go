@@ -16,7 +16,7 @@ func Register(e *sdk.Extension) {
 		Handler: func(ctx context.Context, args string) error {
 			sub := strings.TrimSpace(args)
 			if sub == "install" || sub == "update" {
-				e.SendMessage("please install piglet extensions using: cd ~/go/src/piglet-extensions && make extensions")
+				e.ShowMessage("please install piglet extensions using: cd ~/go/src/piglet-extensions && just extensions")
 				return nil
 			}
 
@@ -40,24 +40,12 @@ func Register(e *sdk.Extension) {
 				fmt.Fprintf(&b, "  %s  [%s]\n", label, info.Kind)
 
 				var caps []string
-				if len(info.Tools) > 0 {
-					caps = append(caps, fmt.Sprintf("tools: %s", strings.Join(info.Tools, ", ")))
-				}
-				if len(info.Commands) > 0 {
-					caps = append(caps, fmt.Sprintf("commands: %s", strings.Join(info.Commands, ", ")))
-				}
-				if len(info.Interceptors) > 0 {
-					caps = append(caps, fmt.Sprintf("interceptors: %s", strings.Join(info.Interceptors, ", ")))
-				}
-				if len(info.EventHandlers) > 0 {
-					caps = append(caps, fmt.Sprintf("events: %s", strings.Join(info.EventHandlers, ", ")))
-				}
-				if len(info.Shortcuts) > 0 {
-					caps = append(caps, fmt.Sprintf("shortcuts: %s", strings.Join(info.Shortcuts, ", ")))
-				}
-				if len(info.MessageHooks) > 0 {
-					caps = append(caps, fmt.Sprintf("hooks: %s", strings.Join(info.MessageHooks, ", ")))
-				}
+				caps = appendCap(caps, "tools", info.Tools)
+				caps = appendCap(caps, "commands", info.Commands)
+				caps = appendCap(caps, "interceptors", info.Interceptors)
+				caps = appendCap(caps, "events", info.EventHandlers)
+				caps = appendCap(caps, "shortcuts", info.Shortcuts)
+				caps = appendCap(caps, "hooks", info.MessageHooks)
 				if info.Compactor != "" {
 					caps = append(caps, fmt.Sprintf("compactor: %s", info.Compactor))
 				}
@@ -70,4 +58,12 @@ func Register(e *sdk.Extension) {
 			return nil
 		},
 	})
+}
+
+// appendCap adds a formatted capability line if items is non-empty.
+func appendCap(caps []string, label string, items []string) []string {
+	if len(items) > 0 {
+		return append(caps, fmt.Sprintf("%s: %s", label, strings.Join(items, ", ")))
+	}
+	return caps
 }

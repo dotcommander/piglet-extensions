@@ -4,6 +4,7 @@ package mcp
 
 import (
 	_ "embed"
+	"fmt"
 	"os"
 	"regexp"
 
@@ -33,13 +34,15 @@ type Config struct {
 // directory (~/.config/piglet/extensions/mcp/mcp.yaml), falling back to the
 // flat location (~/.config/piglet/mcp.yaml) for backward compatibility.
 // Creates a starter config with example entries if neither exists.
-func LoadConfig() *Config {
+func LoadConfig() (*Config, error) {
 	// Ensure file exists with commented example before parsing.
 	raw := xdg.LoadOrCreateExt("mcp", "mcp.yaml", defaultConfigYAML)
 
 	var cfg Config
-	_ = yaml.Unmarshal([]byte(raw), &cfg)
-	return &cfg
+	if err := yaml.Unmarshal([]byte(raw), &cfg); err != nil {
+		return nil, fmt.Errorf("parse mcp.yaml: %w", err)
+	}
+	return &cfg, nil
 }
 
 var envVarRe = regexp.MustCompile(`\$\{([^}]+)\}`)

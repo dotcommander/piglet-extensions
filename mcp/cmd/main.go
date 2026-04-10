@@ -18,13 +18,20 @@ func main() {
 	var mgr *mcp.Manager
 
 	e.OnInit(func(ext *sdk.Extension) {
-		cfg := mcp.LoadConfig()
+		cfg, err := mcp.LoadConfig()
+		if err != nil {
+			ext.Log("error", "mcp: "+err.Error())
+			return
+		}
 		if len(cfg.Servers) == 0 {
 			return
 		}
 
 		mgr = mcp.NewManager()
 
+		// NOTE: mgr.Close() is not called on shutdown because the SDK
+		// lacks an OnShutdown hook (exits via os.Exit(0)). When the SDK
+		// adds shutdown hooks, add: ext.OnShutdown(func() { mgr.Close() })
 		ctx := context.Background()
 		errs := mgr.StartAll(ctx, cfg.Servers)
 		for _, err := range errs {

@@ -22,7 +22,7 @@ type Client struct {
 func Connect(ctx context.Context, name string, cfg ServerConfig) (*Client, error) {
 	c := &Client{name: name}
 
-	var cli *mcpclient.Client
+	var cli mcpclient.MCPClient
 	var err error
 
 	switch cfg.Type {

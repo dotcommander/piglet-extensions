@@ -2,6 +2,7 @@ package fossil
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,11 +48,8 @@ type commitInfo struct {
 // parsePorcelainBlame parses the output of `git blame -p` and returns
 // deduplicated BlameEntry values sorted by first line number ascending.
 func parsePorcelainBlame(output string) ([]BlameEntry, error) {
-	// Per-SHA metadata collected during parsing.
 	meta := map[string]*commitInfo{}
-	// Map from SHA to the set of final line numbers it touches.
 	shaLines := map[string][]int{}
-	// Track insertion order so we can preserve stable sort fallback.
 	var shaOrder []string
 
 	lines := strings.Split(output, "\n")
@@ -81,29 +79,45 @@ func parsePorcelainBlame(output string) ([]BlameEntry, error) {
 			i++
 
 			// Consume header key-value lines until the tab-prefixed content line.
-			for i < len(lines) {
-				hdr := lines[i]
-				if strings.HasPrefix(hdr, "\t") {
-					// Content line — block is complete.
-					i++
-					break
-				}
-				switch {
-				case strings.HasPrefix(hdr, "author "):
-					meta[sha].author = strings.TrimPrefix(hdr, "author ")
-				case strings.HasPrefix(hdr, "author-time "):
-					ts, _ := strconv.ParseInt(strings.TrimPrefix(hdr, "author-time "), 10, 64)
-					meta[sha].authorTime = ts
-				case strings.HasPrefix(hdr, "summary "):
-					meta[sha].summary = strings.TrimPrefix(hdr, "summary ")
-				}
-				i++
-			}
+			i = parseBlameHeaders(lines, i, sha, meta)
 			continue
 		}
 		i++
 	}
 
+	entries := buildBlameEntries(shaOrder, meta, shaLines)
+	sort.Slice(entries, func(a, b int) bool {
+		aMin := slices.Min(shaLines[expandSHA(entries[a].SHA, shaOrder)])
+		bMin := slices.Min(shaLines[expandSHA(entries[b].SHA, shaOrder)])
+		return aMin < bMin
+	})
+
+	return entries, nil
+}
+
+// parseBlameHeaders consumes key-value header lines until a tab-prefixed content line.
+func parseBlameHeaders(lines []string, i int, sha string, meta map[string]*commitInfo) int {
+	for i < len(lines) {
+		hdr := lines[i]
+		if strings.HasPrefix(hdr, "\t") {
+			i++
+			break
+		}
+		switch {
+		case strings.HasPrefix(hdr, "author "):
+			meta[sha].author = strings.TrimPrefix(hdr, "author ")
+		case strings.HasPrefix(hdr, "author-time "):
+			ts, _ := strconv.ParseInt(strings.TrimPrefix(hdr, "author-time "), 10, 64)
+			meta[sha].authorTime = ts
+		case strings.HasPrefix(hdr, "summary "):
+			meta[sha].summary = strings.TrimPrefix(hdr, "summary ")
+		}
+		i++
+	}
+	return i
+}
+
+func buildBlameEntries(shaOrder []string, meta map[string]*commitInfo, shaLines map[string][]int) []BlameEntry {
 	entries := make([]BlameEntry, 0, len(shaOrder))
 	for _, sha := range shaOrder {
 		info := meta[sha]
@@ -122,15 +136,7 @@ func parsePorcelainBlame(output string) ([]BlameEntry, error) {
 			Lines:   lineRange(lineNums),
 		})
 	}
-
-	// Sort by first line number ascending.
-	sort.Slice(entries, func(a, b int) bool {
-		aMin := minLine(shaLines[expandSHA(entries[a].SHA, shaOrder)])
-		bMin := minLine(shaLines[expandSHA(entries[b].SHA, shaOrder)])
-		return aMin < bMin
-	})
-
-	return entries, nil
+	return entries
 }
 
 // lineRange formats a slice of line numbers as "min-max" or "min" if all equal.
@@ -138,32 +144,12 @@ func lineRange(nums []int) string {
 	if len(nums) == 0 {
 		return ""
 	}
-	mn, mx := nums[0], nums[0]
-	for _, n := range nums[1:] {
-		if n < mn {
-			mn = n
-		}
-		if n > mx {
-			mx = n
-		}
-	}
+	mn := slices.Min(nums)
+	mx := slices.Max(nums)
 	if mn == mx {
 		return strconv.Itoa(mn)
 	}
 	return fmt.Sprintf("%d-%d", mn, mx)
-}
-
-func minLine(nums []int) int {
-	if len(nums) == 0 {
-		return 0
-	}
-	m := nums[0]
-	for _, n := range nums[1:] {
-		if n < m {
-			m = n
-		}
-	}
-	return m
 }
 
 // expandSHA maps a short (8-char) SHA back to the full SHA for shaLines lookup.

@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/dotcommander/piglet-extensions/internal/xdg"
 	"github.com/dotcommander/piglet/sdk"
 )
 
@@ -47,6 +47,12 @@ type wireMessage struct {
 	Blocks   []json.RawMessage `json:"blocks,omitempty"`
 }
 
+type contentBlock struct {
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	Thinking string `json:"thinking"`
+}
+
 func exportMarkdown(msgs []json.RawMessage, path string) error {
 	var b strings.Builder
 	b.WriteString("# Piglet Conversation\n\n")
@@ -59,55 +65,60 @@ func exportMarkdown(msgs []json.RawMessage, path string) error {
 
 		switch msg.Role {
 		case "user":
-			b.WriteString("## User\n\n")
-			var text string
-			if json.Unmarshal(msg.Content, &text) == nil {
-				b.WriteString(text)
-			}
-			b.WriteString("\n\n")
-
+			renderUser(&b, msg.Content)
 		case "assistant":
-			b.WriteString("## Assistant\n\n")
-			var blocks []json.RawMessage
-			if json.Unmarshal(msg.Content, &blocks) == nil {
-				for _, block := range blocks {
-					var cb struct {
-						Type     string `json:"type"`
-						Text     string `json:"text"`
-						Thinking string `json:"thinking"`
-					}
-					if json.Unmarshal(block, &cb) != nil {
-						continue
-					}
-					switch cb.Type {
-					case "text":
-						b.WriteString(cb.Text)
-					case "thinking":
-						b.WriteString("<details><summary>Thinking</summary>\n\n")
-						b.WriteString(cb.Thinking)
-						b.WriteString("\n</details>")
-					}
-				}
-			}
-			b.WriteString("\n\n")
-
+			renderAssistant(&b, msg.Content)
 		case "tool_result":
-			fmt.Fprintf(&b, "### Tool: %s\n\n", msg.ToolName)
-			var blocks []json.RawMessage
-			if json.Unmarshal(msg.Content, &blocks) == nil {
-				for _, block := range blocks {
-					var cb struct {
-						Type string `json:"type"`
-						Text string `json:"text"`
-					}
-					if json.Unmarshal(block, &cb) == nil && cb.Type == "text" {
-						b.WriteString(cb.Text)
-					}
-				}
-			}
-			b.WriteString("\n\n")
+			renderToolResult(&b, msg.ToolName, msg.Content)
 		}
 	}
 
-	return os.WriteFile(path, []byte(b.String()), 0644)
+	return xdg.WriteFileAtomic(path, []byte(b.String()))
+}
+
+func renderUser(b *strings.Builder, content json.RawMessage) {
+	b.WriteString("## User\n\n")
+	var text string
+	if json.Unmarshal(content, &text) == nil {
+		b.WriteString(text)
+	}
+	b.WriteString("\n\n")
+}
+
+func renderAssistant(b *strings.Builder, content json.RawMessage) {
+	b.WriteString("## Assistant\n\n")
+	var blocks []json.RawMessage
+	if json.Unmarshal(content, &blocks) != nil {
+		return
+	}
+	for _, block := range blocks {
+		var cb contentBlock
+		if json.Unmarshal(block, &cb) != nil {
+			continue
+		}
+		switch cb.Type {
+		case "text":
+			b.WriteString(cb.Text)
+		case "thinking":
+			b.WriteString("<details><summary>Thinking</summary>\n\n")
+			b.WriteString(cb.Thinking)
+			b.WriteString("\n</details>")
+		}
+	}
+	b.WriteString("\n\n")
+}
+
+func renderToolResult(b *strings.Builder, toolName string, content json.RawMessage) {
+	fmt.Fprintf(b, "### Tool: %s\n\n", toolName)
+	var blocks []json.RawMessage
+	if json.Unmarshal(content, &blocks) != nil {
+		return
+	}
+	for _, block := range blocks {
+		var cb contentBlock
+		if json.Unmarshal(block, &cb) == nil && cb.Type == "text" {
+			b.WriteString(cb.Text)
+		}
+	}
+	b.WriteString("\n\n")
 }

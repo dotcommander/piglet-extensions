@@ -26,7 +26,6 @@ func main() {
 	noCache := fs.Bool("no-cache", false, "force rebuild, ignore cache")
 	fs.Parse(os.Args[2:])
 
-	// Build graph from current directory
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: getwd: %v\n", err)
@@ -40,86 +39,67 @@ func main() {
 	}
 
 	switch cmd {
-	case "deps":
-		if fs.NArg() < 1 {
-			usage()
-			os.Exit(2)
-		}
-		pkg, ok := g.ResolvePackage(fs.Arg(0))
-		if !ok {
-			fmt.Fprintf(os.Stderr, "package not found: %s\n", fs.Arg(0))
-			os.Exit(1)
-		}
-		entries := g.Deps(pkg, *depth)
-		if *jsonOut {
-			printJSON(entries)
-		} else {
-			fmt.Println(depgraph.FormatDeps(pkg, g.Module, entries, *tokens))
-		}
-
-	case "rdeps":
-		if fs.NArg() < 1 {
-			usage()
-			os.Exit(2)
-		}
-		pkg, ok := g.ResolvePackage(fs.Arg(0))
-		if !ok {
-			fmt.Fprintf(os.Stderr, "package not found: %s\n", fs.Arg(0))
-			os.Exit(1)
-		}
-		entries := g.ReverseDeps(pkg, *depth)
-		if *jsonOut {
-			printJSON(entries)
-		} else {
-			fmt.Println(depgraph.FormatDeps(pkg, g.Module, entries, *tokens))
-		}
-
+	case "deps", "rdeps":
+		runDepQuery(g, fs, cmd, *depth, *tokens, *jsonOut)
 	case "impact":
-		if fs.NArg() < 1 {
-			usage()
-			os.Exit(2)
-		}
-		packages := g.Impact(fs.Arg(0))
-		if *jsonOut {
-			printJSON(packages)
-		} else {
-			fmt.Println(depgraph.FormatImpact(packages, g.Module, *tokens))
-		}
-
+		runImpact(g, fs, *tokens, *jsonOut)
 	case "cycles":
 		cycles := g.DetectCycles()
-		if *jsonOut {
-			printJSON(cycles)
-		} else {
-			fmt.Println(depgraph.FormatCycles(cycles, g.Module))
-		}
-
+		output(cycles, depgraph.FormatCycles(cycles, g.Module), *jsonOut)
 	case "path":
-		if fs.NArg() < 2 {
-			usage()
-			os.Exit(2)
-		}
-		src, ok1 := g.ResolvePackage(fs.Arg(0))
-		dst, ok2 := g.ResolvePackage(fs.Arg(1))
-		if !ok1 {
-			fmt.Fprintf(os.Stderr, "package not found: %s\n", fs.Arg(0))
-			os.Exit(1)
-		}
-		if !ok2 {
-			fmt.Fprintf(os.Stderr, "package not found: %s\n", fs.Arg(1))
-			os.Exit(1)
-		}
-		p := g.ShortestPath(src, dst)
-		if *jsonOut {
-			printJSON(p)
-		} else {
-			fmt.Println(depgraph.FormatPath(p, g.Module))
-		}
-
+		runPath(g, fs, *jsonOut)
 	default:
 		usage()
 		os.Exit(2)
 	}
+}
+
+func runDepQuery(g *depgraph.Graph, fs *flag.FlagSet, cmd string, depth, tokens int, jsonOut bool) {
+	if fs.NArg() < 1 {
+		usage()
+		os.Exit(2)
+	}
+	pkg, ok := g.ResolvePackage(fs.Arg(0))
+	if !ok {
+		fmt.Fprintf(os.Stderr, "package not found: %s\n", fs.Arg(0))
+		os.Exit(1)
+	}
+
+	var entries []depgraph.DepEntry
+	if cmd == "deps" {
+		entries = g.Deps(pkg, depth)
+	} else {
+		entries = g.ReverseDeps(pkg, depth)
+	}
+	output(entries, depgraph.FormatDeps(pkg, g.Module, entries, tokens), jsonOut)
+}
+
+func runImpact(g *depgraph.Graph, fs *flag.FlagSet, tokens int, jsonOut bool) {
+	if fs.NArg() < 1 {
+		usage()
+		os.Exit(2)
+	}
+	packages := g.Impact(fs.Arg(0))
+	output(packages, depgraph.FormatImpact(packages, g.Module, tokens), jsonOut)
+}
+
+func runPath(g *depgraph.Graph, fs *flag.FlagSet, jsonOut bool) {
+	if fs.NArg() < 2 {
+		usage()
+		os.Exit(2)
+	}
+	src, ok1 := g.ResolvePackage(fs.Arg(0))
+	dst, ok2 := g.ResolvePackage(fs.Arg(1))
+	if !ok1 {
+		fmt.Fprintf(os.Stderr, "package not found: %s\n", fs.Arg(0))
+		os.Exit(1)
+	}
+	if !ok2 {
+		fmt.Fprintf(os.Stderr, "package not found: %s\n", fs.Arg(1))
+		os.Exit(1)
+	}
+	p := g.ShortestPath(src, dst)
+	output(p, depgraph.FormatPath(p, g.Module), jsonOut)
 }
 
 func usage() {
@@ -146,6 +126,15 @@ func printJSON(v any) {
 	if err := enc.Encode(v); err != nil {
 		fmt.Fprintf(os.Stderr, "error: json encode: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// output writes result as JSON or formatted text.
+func output(v any, formatted string, jsonOut bool) {
+	if jsonOut {
+		printJSON(v)
+	} else {
+		fmt.Println(formatted)
 	}
 }
 

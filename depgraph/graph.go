@@ -73,7 +73,27 @@ func BuildGraph(root string) (*Graph, error) {
 		}
 	}
 
-	forward := make(map[string][]string, len(entries))
+	forward, reverse := buildEdges(entries, packages)
+	dirIndex := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if e.Dir != "" {
+			dirIndex[e.Dir] = e.ImportPath
+		}
+	}
+
+	return &Graph{
+		Root:     root,
+		Module:   mod,
+		Packages: packages,
+		Forward:  forward,
+		Reverse:  reverse,
+		dirIndex: dirIndex,
+	}, nil
+}
+
+// buildEdges constructs forward and reverse dependency edges from go list output.
+func buildEdges(entries []goListPkg, packages map[string]*Package) (forward, reverse map[string][]string) {
+	forward = make(map[string][]string, len(entries))
 	for _, e := range entries {
 		seen := make(map[string]struct{})
 		all := make([]string, 0, len(e.Imports)+len(e.TestImports)+len(e.XTestImports))
@@ -102,7 +122,7 @@ func BuildGraph(root string) (*Graph, error) {
 		packages[e.ImportPath].Imports = deps
 	}
 
-	reverse := make(map[string][]string, len(entries))
+	reverse = make(map[string][]string, len(entries))
 	for pkg, deps := range forward {
 		for _, dep := range deps {
 			reverse[dep] = append(reverse[dep], pkg)
@@ -111,22 +131,7 @@ func BuildGraph(root string) (*Graph, error) {
 	for dep := range reverse {
 		sort.Strings(reverse[dep])
 	}
-
-	dirIndex := make(map[string]string, len(entries))
-	for _, e := range entries {
-		if e.Dir != "" {
-			dirIndex[e.Dir] = e.ImportPath
-		}
-	}
-
-	return &Graph{
-		Root:     root,
-		Module:   mod,
-		Packages: packages,
-		Forward:  forward,
-		Reverse:  reverse,
-		dirIndex: dirIndex,
-	}, nil
+	return forward, reverse
 }
 
 // ResolvePackage finds the package import path for a given file path or package pattern.

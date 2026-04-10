@@ -1,3 +1,5 @@
+// Package distill extracts reusable skills from completed sessions.
+// Skills are written as markdown files to ~/.config/piglet/skills/.
 package distill
 
 import (
@@ -17,6 +19,44 @@ import (
 
 const maxFormatChars = 6000
 
+// contentBlock represents a single block in a content array.
+type contentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+	Name string `json:"name"`
+}
+
+// messageContent holds the parsed content of a message field (string or []block).
+type messageContent struct {
+	RawString string
+	Blocks    []contentBlock
+}
+
+// message is the common envelope for JSON-RPC message parsing.
+type message struct {
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
+}
+
+// parseContent unmarshals a content field which may be a plain string or []block.
+func parseContent(raw json.RawMessage) messageContent {
+	if len(raw) == 0 {
+		return messageContent{}
+	}
+	if raw[0] == '"' {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			return messageContent{RawString: s}
+		}
+		return messageContent{}
+	}
+	var blocks []contentBlock
+	if json.Unmarshal(raw, &blocks) != nil {
+		return messageContent{}
+	}
+	return messageContent{Blocks: blocks}
+}
+
 // scoreComplexity analyzes messages for session complexity.
 // Returns a score based on message count, tool usage, and error recovery patterns.
 // Messages come from EventAgentEnd payload as []json.RawMessage.
@@ -25,11 +65,12 @@ func scoreComplexity(messages []json.RawMessage) int {
 
 	var prevHadError bool
 	for _, raw := range messages {
-		score += countToolUseBlocks(raw) * 2
-		if prevHadError && hasSuccessfulToolCall(raw) {
+		tools := countToolUseBlocks(raw)
+		score += tools * 2
+		if prevHadError && tools > 0 {
 			score += 3
 		}
-		prevHadError = isAssistantWithError(raw)
+		prevHadError = assistantTextContainsError(raw)
 	}
 
 	return score
@@ -44,20 +85,9 @@ func countToolUseBlocks(raw json.RawMessage) int {
 		return 0
 	}
 
-	// Content may be a string or []block
-	if len(msg.Content) > 0 && msg.Content[0] == '"' {
-		return 0
-	}
-
-	var blocks []struct {
-		Type string `json:"type"`
-	}
-	if json.Unmarshal(msg.Content, &blocks) != nil {
-		return 0
-	}
-
+	pc := parseContent(msg.Content)
 	count := 0
-	for _, b := range blocks {
+	for _, b := range pc.Blocks {
 		if b.Type == "tool_use" {
 			count++
 		}
@@ -65,49 +95,23 @@ func countToolUseBlocks(raw json.RawMessage) int {
 	return count
 }
 
-// isAssistantWithError returns true if msg is an assistant message containing "error".
-// Checks only text blocks — tool names and tool results are ignored.
-func isAssistantWithError(raw json.RawMessage) bool {
-	var msg struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
-	}
+// assistantTextContainsError returns true if msg is an assistant message
+// with "error" in any text block. Tool names and tool results are ignored.
+func assistantTextContainsError(raw json.RawMessage) bool {
+	var msg message
 	if json.Unmarshal(raw, &msg) != nil || msg.Role != "assistant" {
 		return false
 	}
-	return textContainsError(msg.Content)
-}
-
-// textContainsError checks only text blocks (not tool names/results) for "error".
-func textContainsError(raw json.RawMessage) bool {
-	if len(raw) == 0 {
-		return false
+	pc := parseContent(msg.Content)
+	if pc.RawString != "" {
+		return strings.Contains(strings.ToLower(pc.RawString), "error")
 	}
-	if raw[0] == '"' {
-		var s string
-		if json.Unmarshal(raw, &s) == nil {
-			return strings.Contains(strings.ToLower(s), "error")
-		}
-		return false
-	}
-	var blocks []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(raw, &blocks) != nil {
-		return false
-	}
-	for _, b := range blocks {
+	for _, b := range pc.Blocks {
 		if b.Type == "text" && strings.Contains(strings.ToLower(b.Text), "error") {
 			return true
 		}
 	}
 	return false
-}
-
-// hasSuccessfulToolCall returns true if msg contains a tool_use block (successful follow-up).
-func hasSuccessfulToolCall(raw json.RawMessage) bool {
-	return countToolUseBlocks(raw) > 0
 }
 
 // formatMessages converts raw JSON messages into a readable transcript for the LLM.
@@ -133,10 +137,7 @@ func formatMessages(messages []json.RawMessage, maxBytes int) string {
 
 // formatMessage renders a single message as a readable line.
 func formatMessage(raw json.RawMessage) string {
-	var msg struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
-	}
+	var msg message
 	if json.Unmarshal(raw, &msg) != nil || msg.Role == "" {
 		return ""
 	}
@@ -154,31 +155,13 @@ func formatMessage(raw json.RawMessage) string {
 
 // extractTextContent pulls readable text out of a content field (string or []block).
 func extractTextContent(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-
-	// String content
-	if raw[0] == '"' {
-		var s string
-		if json.Unmarshal(raw, &s) == nil {
-			return s
-		}
-	}
-
-	// Block array
-	var blocks []struct {
-		Type  string `json:"type"`
-		Text  string `json:"text"`
-		Name  string `json:"name"`
-		Input any    `json:"input"`
-	}
-	if json.Unmarshal(raw, &blocks) != nil {
-		return ""
+	pc := parseContent(raw)
+	if pc.RawString != "" {
+		return pc.RawString
 	}
 
 	var parts []string
-	for _, b := range blocks {
+	for _, b := range pc.Blocks {
 		switch b.Type {
 		case "text":
 			if b.Text != "" {
@@ -248,8 +231,7 @@ var multiHyphenRe = regexp.MustCompile(`-{2,}`)
 
 // sanitizeName produces a safe filename: lowercase, hyphens, no special chars.
 func sanitizeName(name string) string {
-	s := strings.ToLower(name)
-	s = strings.ReplaceAll(s, " ", "-")
+	s := strings.ToLower(xdg.SanitizeFilename(name))
 	s = nonAlphanumRe.ReplaceAllString(s, "")
 	s = multiHyphenRe.ReplaceAllString(s, "-")
 	s = strings.Trim(s, "-")

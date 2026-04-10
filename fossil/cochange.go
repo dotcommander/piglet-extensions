@@ -31,26 +31,24 @@ func CoChange(cwd, file string, limit int) ([]CoChangeEntry, error) {
 		return nil, nil
 	}
 
-	shas := strings.Split(shaOut, "\n")
+	// Phase 2: single git log --no-walk to get all files for all commits.
+	// --no-walk shows each specified commit independently, listing all changed files.
+	// --name-only shows each file once per commit, so counting occurrences across
+	// all commits directly gives us the co-change frequency.
+	shas := strings.Fields(shaOut)
+	args := []string{"log", "--name-only", "--no-walk", "--format="}
+	args = append(args, shas...)
 
-	// Phase 2: for each commit, get all files changed (not just the target).
+	filesOut, err := gitRun(cwd, defaultTimeout, args...)
+	if err != nil {
+		return nil, fmt.Errorf("git log --no-walk: %w", err)
+	}
+
 	counts := make(map[string]int)
-	for _, sha := range shas {
-		sha = strings.TrimSpace(sha)
-		if sha == "" {
-			continue
-		}
-		filesOut, err := gitRun(cwd, defaultTimeout,
-			"diff-tree", "--no-commit-id", "--name-only", "-r", sha,
-		)
-		if err != nil {
-			continue
-		}
-		for _, f := range strings.Split(filesOut, "\n") {
-			f = strings.TrimSpace(f)
-			if f != "" && f != file {
-				counts[f]++
-			}
+	for _, f := range strings.Split(filesOut, "\n") {
+		f = strings.TrimSpace(f)
+		if f != "" && f != file {
+			counts[f]++
 		}
 	}
 

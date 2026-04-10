@@ -5,5 +5,5 @@ capabilities:
   - commands
   - promptSections
 defaults:
-  - src: cmd/defaults/prompt.md
+  - src: ../defaults/prompt.md
     dest: extensions/loop/prompt.md

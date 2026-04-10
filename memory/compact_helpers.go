@@ -2,6 +2,7 @@ package memory
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -32,9 +33,15 @@ func truncateToolResults(msgs []wireMsg, maxChars int) {
 		}
 
 		if modified {
-			if data, err := json.Marshal(tr); err == nil {
-				msgs[i].Data = data
+			data, err := json.Marshal(tr)
+			if err != nil {
+				// Truncation failed — replace with error marker so
+				// untruncated content does not survive compaction.
+				data, _ = json.Marshal(map[string]any{
+					"content": fmt.Sprintf("[tool result truncation failed: %s]", err),
+				})
 			}
+			msgs[i].Data = data
 		}
 	}
 }

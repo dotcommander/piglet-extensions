@@ -23,7 +23,11 @@ func LoadYAML[T any](filename string, defaults T) T {
 		return defaults
 	}
 
-	_ = yaml.Unmarshal(data, &defaults)
+	if err := yaml.Unmarshal(data, &defaults); err != nil {
+		// Corrupt file: self-heal by overwriting with defaults.
+		defaultData, _ := yaml.Marshal(defaults)
+		_ = WriteFileAtomic(cfgPath, defaultData)
+	}
 	return defaults
 }
 

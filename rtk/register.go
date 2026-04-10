@@ -29,22 +29,7 @@ func Register(e *sdk.Extension) {
 	e.RegisterInterceptor(sdk.InterceptorDef{
 		Name:     "rtk",
 		Priority: 100,
-		Before: func(ctx context.Context, toolName string, args map[string]any) (bool, map[string]any, error) {
-			if toolName != "bash" {
-				return true, args, nil
-			}
-			command, _ := args["command"].(string)
-			if command == "" {
-				return true, args, nil
-			}
-			rewritten, err := rewrite(ctx, rtkPath, command)
-			if err != nil || rewritten == "" || rewritten == command {
-				return true, args, nil
-			}
-			modified := maps.Clone(args)
-			modified["command"] = rewritten
-			return true, modified, nil
-		},
+		Before:   newBeforeFunc(rtkPath),
 	})
 
 	e.RegisterPromptSection(sdk.PromptSectionDef{
@@ -52,6 +37,26 @@ func Register(e *sdk.Extension) {
 		Content: xdg.LoadOrCreateExt("rtk", "prompt.md", strings.TrimSpace(defaultPrompt)),
 		Order:   90,
 	})
+}
+
+// newBeforeFunc returns the interceptor Before handler for the given rtk binary path.
+func newBeforeFunc(rtkPath string) func(ctx context.Context, toolName string, args map[string]any) (bool, map[string]any, error) {
+	return func(ctx context.Context, toolName string, args map[string]any) (bool, map[string]any, error) {
+		if toolName != "bash" {
+			return true, args, nil
+		}
+		command, _ := args["command"].(string)
+		if command == "" {
+			return true, args, nil
+		}
+		rewritten, err := rewrite(ctx, rtkPath, command)
+		if err != nil || rewritten == "" || rewritten == command {
+			return true, args, nil
+		}
+		modified := maps.Clone(args)
+		modified["command"] = rewritten
+		return true, modified, nil
+	}
 }
 
 func rewrite(ctx context.Context, rtkPath, command string) (string, error) {

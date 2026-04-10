@@ -43,3 +43,12 @@ func classifyFact(key string) contextKind {
 		return contextOther
 	}
 }
+
+// truncRunes truncates s to n runes, appending "..." if truncated.
+func truncRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "..."
+}

@@ -16,7 +16,7 @@ func LoadOrCreateFile(filename, defaultContent string) string {
 	path := filepath.Join(dir, filename)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		_ = WriteFileAtomic(path, []byte(defaultContent+"\n"))
+		_ = WriteFileAtomic(path, []byte(defaultContent))
 		return defaultContent
 	}
 
@@ -84,7 +84,7 @@ func LoadOrCreateExt(extName, filename, defaultContent string) string {
 
 	// Neither exists: create in new location with defaults
 	if err := os.MkdirAll(extDir, 0o755); err == nil {
-		_ = WriteFileAtomic(newPath, []byte(defaultContent+"\n"))
+		_ = WriteFileAtomic(newPath, []byte(defaultContent))
 	}
 	return defaultContent
 }

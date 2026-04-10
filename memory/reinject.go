@@ -73,8 +73,7 @@ func appendItems(items []criticalContext, facts []Fact, max int, category string
 
 		content := f.Value
 		if len(content) > maxChars {
-			runes := []rune(content)
-			content = string(runes[:maxChars]) + "..."
+			content = truncRunes(content, maxChars)
 		}
 
 		items = append(items, criticalContext{

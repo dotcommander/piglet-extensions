@@ -77,11 +77,13 @@ func buildGitContext(cwd string) string {
 
 	if hunks != "" {
 		lines := strings.Split(hunks, "\n")
-		if len(lines) <= defaultMaxDiffHunkLines {
-			b.WriteString("Diff:\n```diff\n")
-			b.WriteString(hunks)
-			b.WriteString("\n```\n")
+		if len(lines) > defaultMaxDiffHunkLines {
+			lines = append(lines[:defaultMaxDiffHunkLines],
+				fmt.Sprintf("... (%d more lines truncated)", len(lines)-defaultMaxDiffHunkLines))
 		}
+		b.WriteString("Diff:\n```diff\n")
+		b.WriteString(strings.Join(lines, "\n"))
+		b.WriteString("\n```\n")
 	}
 
 	return strings.TrimSpace(b.String())

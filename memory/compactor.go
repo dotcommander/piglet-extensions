@@ -91,9 +91,17 @@ func buildFactSummary(facts []Fact) string {
 
 	// Append machine-parseable file tracking tags for cumulative tracking
 	// across compaction boundaries.
+	appendXMLFileTags(&b, files, edits)
+
+	return b.String()
+}
+
+// appendXMLFileTags writes machine-parseable XML tags for cumulative file
+// tracking across compaction boundaries.
+func appendXMLFileTags(b *strings.Builder, files, edits []string) {
 	if len(files) > 0 {
 		b.WriteByte('\n')
-		writeXMLTagBlock(&b, "read-files", files)
+		writeXMLTagBlock(b, "read-files", files)
 		b.WriteByte('\n')
 	}
 	if len(edits) > 0 {
@@ -103,20 +111,14 @@ func buildFactSummary(facts []Fact) string {
 			editPaths[i] = strings.TrimSpace(path)
 		}
 		b.WriteByte('\n')
-		writeXMLTagBlock(&b, "modified-files", editPaths)
+		writeXMLTagBlock(b, "modified-files", editPaths)
 		b.WriteByte('\n')
 	}
-
-	return b.String()
 }
 
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
-	r := []rune(line)
-	if len(r) > 100 {
-		return string(r[:100]) + "..."
-	}
-	return line
+	return truncRunes(line, 100)
 }
 
 // contextCounts holds categorized counts of context facts.
