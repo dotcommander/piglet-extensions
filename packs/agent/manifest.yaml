@@ -8,3 +8,5 @@ capabilities:
   - prompt
   - eventHandlers
   - shortcuts
+  - promptSections
+  - provider

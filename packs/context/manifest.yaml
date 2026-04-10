@@ -7,3 +7,4 @@ capabilities:
   - prompt
   - messageHooks
   - eventHandlers
+  - promptSections

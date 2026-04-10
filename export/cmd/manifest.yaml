@@ -1,7 +1,7 @@
 name: export
 version: 0.1.0
 runtime: ./export
-description: Export conversation history as markdown or JSON
+description: Export conversation history as markdown
 capabilities:
   - commands
 triggers: [export, save conversation, conversation history]
