@@ -49,6 +49,7 @@ Extensions register one or more capabilities:
 | [safeguard](safeguard.md) | Block dangerous commands and file operations | interceptors |
 | [rtk](rtk.md) | Token-optimized CLI proxy (60-90% savings) | interceptors, prompt |
 | [sift](sift.md) | Compress large tool output | interceptors, prompt |
+| [tokengate](tokengate.md) | Token budget enforcement and scope limiting | interceptors, events, tools, commands, prompt |
 
 ### Context & Memory
 
@@ -64,6 +65,7 @@ Extensions register one or more capabilities:
 | Extension | Description | Capabilities |
 |-----------|-------------|--------------|
 | [plan](plan.md) | Structured task tracking with checkpoints | tools, commands, prompt |
+| [tasklist](tasklist.md) | Project task management with subtasks and groups | tools, commands, prompt |
 | [coordinator](coordinator.md) | Decompose tasks into parallel sub-tasks | tools |
 | [subagent](subagent.md) | Delegate to independent sub-agents | tools |
 | [loop](loop.md) | Recurring task execution | commands, prompt |
