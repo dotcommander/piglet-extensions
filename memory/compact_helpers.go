@@ -6,6 +6,34 @@ import (
 	"strings"
 )
 
+// jsonByteLen returns the number of bytes in v's JSON encoding without
+// allocating the encoded buffer. Implements io.Writer as a byte counter
+// and feeds json.NewEncoder — equivalent to len(json.Marshal(v)) but
+// allocation-free for token estimation hot paths.
+func jsonByteLen(v any) int {
+	var c byteCounter
+	_ = json.NewEncoder(&c).Encode(v)
+	return max(0, c.n-1) // Encode appends a trailing newline; subtract it
+}
+
+type byteCounter struct{ n int }
+
+func (c *byteCounter) Write(p []byte) (int, error) {
+	c.n += len(p)
+	return len(p), nil
+}
+
+// estimateTokens returns a rough token count for a slice of wire messages.
+// Uses the 4-bytes-per-token heuristic — accurate enough for threshold checks
+// on message data that is already JSON-serialised in wireMsg.Data.
+func estimateTokens(msgs []wireMsg) int {
+	var total int
+	for _, m := range msgs {
+		total += jsonByteLen(m)
+	}
+	return total / 4
+}
+
 // truncateToolResults truncates large tool-result text content in messages
 // to maxChars. This prevents bash/read output from dominating the LLM
 // summarizer's token budget during compaction.

@@ -97,12 +97,17 @@ type wireMsg struct {
 type compactConfig struct {
 	KeepRecent         int `yaml:"keep_recent"`
 	TruncateToolResult int `yaml:"truncate_tool_result"`
+	// SkipLLMThreshold skips the LLM summarisation call when estimated tokens
+	// across all messages is below this value after lightweight truncation.
+	// 0 disables the check (always call LLM). Measured in tokens (~4 bytes each).
+	SkipLLMThreshold int `yaml:"skip_llm_threshold"`
 }
 
 func defaultCompactConfig() compactConfig {
 	return compactConfig{
 		KeepRecent:         6,
 		TruncateToolResult: 2000,
+		SkipLLMThreshold:   8000,
 	}
 }
 
@@ -130,7 +135,8 @@ func makeCompactHandler(ext *sdk.Extension, s *Store) func(ctx context.Context, 
 		summary := result.Summary
 		summary = mergeFileLists(summary, priorRead, priorModified)
 
-		if summary != "" {
+		skipLLM := cfg.SkipLLMThreshold > 0 && estimateTokens(params.Messages) < cfg.SkipLLMThreshold
+		if summary != "" && !skipLLM {
 			resp, err := ext.Chat(ctx, sdk.ChatRequest{
 				System:   strings.TrimSpace(defaultCompactSystem),
 				Messages: []sdk.ChatMessage{{Role: "user", Content: summary}},

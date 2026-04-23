@@ -145,6 +145,38 @@ func TestExtractPriorFileLists_DedupsAcrossMessages(t *testing.T) {
 	assert.Len(t, read, 3)
 }
 
+func TestJSONByteLen_Basic(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(map[string]string{"k": "v"})
+	require.NoError(t, err)
+	// jsonByteLen must match the actual marshal length exactly.
+	assert.Equal(t, len(b), jsonByteLen(map[string]string{"k": "v"}))
+}
+
+func TestJSONByteLen_Empty(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(nil)
+	require.NoError(t, err)
+	assert.Equal(t, len(b), jsonByteLen(nil))
+}
+
+func TestEstimateTokens_Empty(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 0, estimateTokens(nil))
+	assert.Equal(t, 0, estimateTokens([]wireMsg{}))
+}
+
+func TestEstimateTokens_NonZero(t *testing.T) {
+	t.Parallel()
+	data, err := json.Marshal(map[string]string{"content": "hello world from the memory extension"})
+	require.NoError(t, err)
+	msgs := []wireMsg{{Type: "user", Data: data}}
+	tokens := estimateTokens(msgs)
+	// Rough heuristic: 4 bytes/token. The message is ~50 bytes → ~12 tokens.
+	assert.Greater(t, tokens, 0)
+	assert.Less(t, tokens, 100)
+}
+
 func makeToolResultMsg(toolName, text string) wireMsg {
 	tr := wireToolResult{
 		ToolName: toolName,
