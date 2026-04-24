@@ -9,12 +9,14 @@ import (
 	"github.com/dotcommander/piglet-extensions/scaffold"
 	"github.com/dotcommander/piglet-extensions/selfupdate"
 	"github.com/dotcommander/piglet-extensions/undo"
+	"github.com/dotcommander/piglet/extensions/cmdcore"
 	"github.com/dotcommander/piglet/sdk"
 )
 
 func main() {
 	e := sdk.New("pack-core", "0.1.0")
 	safety.Register(e, "admin", admin.Register)
+	safety.Register(e, "cmdcore", cmdcore.Register)
 	safety.Register(e, "export", export.Register)
 	safety.Register(e, "extensions-list", extlist.Register)
 	safety.Register(e, "undo", undo.Register)
